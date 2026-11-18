@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupoClip is an open-source alternative to OpusClip — an AI-powered video clipping tool that transforms long-form content into viral short clips. AGPL-3.0 licensed.
+SupoClip is an open-source alternative to OpusClip — an AI-powered video clipping tool that transforms long-form content into viral short clips. Licensed under the SupoClip Noncommercial Source License. Keep the copies in `backend/` and `mcp/` in sync with the root `LICENSE` for packaging.
 
 ## Development Commands
 
@@ -156,6 +156,8 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 | `src/services/social_service.py` | Account connections, publish/schedule, metrics refresh, AI performance context |
 | `src/repositories/social_repository.py` | `social_accounts`, `social_posts`, `social_post_metrics` SQL |
 | `src/api/routes/social.py` | `/social/*` routes |
+| `src/feedback/` | Feedback inbox: stored submissions, admin triage, webhook outbox with SSRF-safe delivery (`docs/feedback.md`) |
+| `src/cancellation_reviews/` | Investigates every Stripe cancellation and reports it to the operator chat (`docs/cancellation-reviews.md`) |
 
 ## API Endpoints (routes in `api/routes/`)
 
@@ -183,6 +185,10 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 - `POST /upload` — Upload video file
 - `GET /clips/{filename}` — Serve generated clips
 
+**Feedback:**
+- `POST /feedback` — Store a bug/feature/general/sales/cancellation message (the only way one is created); webhooks are fanned out from an outbox
+- `/admin/feedback*`, `/admin/feedback-webhooks*` — Admin inbox (filters, status, notes) and webhook destinations (Discord or HMAC-signed JSON). URLs and secrets are encrypted and never returned. UI at `/admin/feedback`
+
 **Social publishing:**
 - `GET /social/providers`, `GET /social/connections` — configured platforms and connected accounts
 - `POST /social/connections/{provider}/authorize` + `/callback` — OAuth handshake (session auth only)
@@ -193,6 +199,7 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 - `GET /social/media/{token}` — public token-gated clip stream for Instagram
 
 Worker crons (`workers/tasks.py`): every minute `dispatch_scheduled_social_posts`, hourly `refresh_social_metrics`.
+Feedback webhook retries: every minute `deliver_feedback_webhooks` (`feedback/delivery.py`).
 Post status flow: `scheduled → queued → publishing → published/failed/cancelled`.
 
 **API keys (programmatic access):**
@@ -257,6 +264,13 @@ table (one per user, `slug` cleared on decline).
   "App Store code added" and the creator page shows `appStoreRedeemUrl(code)`.
   The app's paywall opens Apple's redeem sheet ("Have a creator code?").
 
+## Pull requests
+
+Every PR with a visible change includes a screenshot of the feature, and a short video (inline GIF, plus the
+`.mp4` link when needed) whenever the change can be recorded. Capture it from the running app with demo data,
+push the media to an orphan `pr-assets/<branch-name>` branch, and embed it via `raw.githubusercontent.com`.
+Backend-only PRs say there is nothing visual. Full rules: "Screenshots and video in PRs" in `AGENTS.md`.
+
 ## Feature tours
 
 When a change gives existing users something new to find, add a tour: an entry in
@@ -291,6 +305,10 @@ INSTAGRAM_APP_ID=...                 # Social publishing: Meta app with Instagra
 SOCIAL_PERFORMANCE_MIN_POSTS=3       # Measured posts before AI selection is personalized
 SOCIAL_PUBLISHING_ACCESS=off         # Rollout gate: off (default) | admins (admins + allowlist) | all
 SOCIAL_PUBLISHING_ALLOWED_EMAILS=    # Comma-separated beta emails when access=admins
+STRIPE_CANCELLATION_WEBHOOK_SECRETS= # Cancellation reviews: acct_X:whsec_... per Stripe endpoint (API)
+CANCELLATION_REVIEWS_ENABLED=false   # Cron worker investigates cancellations and posts reports (docs/cancellation-reviews.md)
+CANCELLATION_REPORT_WEBHOOK_URL=     # Signed operator-chat webhook (+ CANCELLATION_REPORT_WEBHOOK_SECRET)
+HERMES_FEEDBACK_WEBHOOK_URL=         # Hermes assistant route for every feedback submission (+ HERMES_FEEDBACK_WEBHOOK_SECRET; API + cron worker)
 WORKFLOWS_ACCESS=admins              # Series/topic/recap/trailer + instructions: off | admins | all (self-host: all)
 WORKFLOWS_ALLOWED_EMAILS=            # Comma-separated beta emails when access=admins
 WORKFLOWS_PUBLIC=                    # Workflows open to everyone while access=admins, e.g. trailer,topic
