@@ -64,7 +64,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import { ClipTile, ClipFocus, ProcessingPanel, ProcessingSlots, EmptyState, clipProgressFromMessage, sourceTimestamp } from "@/components/app/clip-wall";
+import { ClipTile, ClipFocus, ProcessingPanel, ProcessingSlots, EmptyState, clipProgressFromMessage, sourceTimestamp, type PostTextData } from "@/components/app/clip-wall";
 import { orderedParts, seriesPartTotal, SeriesView, unfinishedSeries } from "@/components/app/series-view";
 import { HeroClipView } from "@/components/app/hero-clip-view";
 import { DownloadAllButton } from "@/components/app/download-all-button";
@@ -116,6 +116,7 @@ interface Clip extends WorkflowClipFields {
   shareability_score: number;
   hook_type: string | null;
   hook_title: string | null;
+  post_text?: PostTextData | null;
 }
 
 interface TaskDetails extends WorkflowTaskFields {
@@ -218,6 +219,7 @@ export default function TaskPage() {
   const [isRevokingShare, setIsRevokingShare] = useState(false);
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([]);
   const [socialProviders, setSocialProviders] = useState<SocialProviderStatus[]>([]);
+  const [socialEnabled, setSocialEnabled] = useState(false);
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>([]);
 
   // null means "use the caption template's own value" — mirrors the create form's contract.
@@ -279,7 +281,8 @@ export default function TaskPage() {
         setSocialConnections(data.connections ?? []);
       }
       if (providersResponse.ok) {
-        const data = (await providersResponse.json()) as { providers?: SocialProviderStatus[] };
+        const data = (await providersResponse.json()) as { enabled?: boolean; providers?: SocialProviderStatus[] };
+        setSocialEnabled(data.enabled === true);
         setSocialProviders(data.providers ?? []);
       }
     } catch {
@@ -835,6 +838,7 @@ export default function TaskPage() {
       clip={clip}
       connections={socialConnections}
       providers={socialProviders}
+      socialEnabled={socialEnabled}
       onChanged={loadSocialPosts}
     />
   ) : null;

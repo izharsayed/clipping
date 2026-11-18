@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseChangelog, readChangelog } from "./changelog";
+import { changelogCandidates, parseChangelog, readChangelog } from "./changelog";
 
 const SAMPLE = `# Changelog
 
@@ -50,7 +50,8 @@ describe("parseChangelog", () => {
 
 describe("repository changelog", () => {
   const releases = readChangelog();
-  const markdown = readFileSync(path.join(process.cwd(), "..", "CHANGELOG.md"), "utf8");
+  const filePath = changelogCandidates().find((c) => existsSync(c)) || path.join(process.cwd(), "..", "CHANGELOG.md");
+  const markdown = readFileSync(filePath, "utf8");
 
   it("starts on or after 2026-10-01 and lists newer dates first", () => {
     expect(releases[0]?.date >= "2026-10-01").toBe(true);

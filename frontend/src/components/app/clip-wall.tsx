@@ -4,21 +4,42 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
-  Check, ChevronLeft, ChevronRight, Download, Flame, Loader2, MessageSquare,
-  Play, Scissors, Share2, Star, Trash2, TrendingUp,
+  Check, ChevronLeft, ChevronRight, Copy, Download, Flame, Loader2, MessageSquare,
+  Play, RefreshCw, Scissors, Share2, Sparkles, Star, Trash2, TrendingUp,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ClipCover, ScoreRing } from "@/components/app/clip-cover";
 import DynamicVideoPlayer from "@/components/dynamic-video-player";
 import { TranscriptPreview } from "@/components/transcript-preview";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getClipUrl } from "@/lib/clip-actions";
 import { formatClipDuration } from "@/lib/generations";
 import { DELAY_MESSAGE_KEYS, isDownloadRecovery } from "@/lib/download-recovery";
 import { estimateRemainingSeconds, type EtaPhase } from "@/lib/processing-eta";
 import { cn } from "@/lib/utils";
 import { SINGLE_OUTPUT, type SourceRange, type Workflow, type WorkflowClipFields } from "@/lib/workflows";
+
+export interface PostTextData {
+  hook: string;
+  title: string;
+  description: string;
+  hashtags: string[];
+  highlight_words: string[];
+  formatted_copy?: string;
+}
+
+export function formatPostTextClipboard(data: Partial<PostTextData>, fallbackTitle = ""): string {
+  if (data.formatted_copy) return data.formatted_copy;
+  const title = (data.title || fallbackTitle).trim();
+  const desc = (data.description || "").trim();
+  const tags = (data.hashtags || []).map((t) => `#${t.replace(/^#/, "")}`).join(" ");
+  const parts = [title];
+  if (desc) parts.push(desc);
+  if (tags) parts.push(tags);
+  return parts.join("\n\n");
+}
 
 export interface WallClip extends WorkflowClipFields {
   id: string;
@@ -37,6 +58,7 @@ export interface WallClip extends WorkflowClipFields {
   shareability_score: number;
   hook_type: string | null;
   hook_title: string | null;
+  post_text?: PostTextData | null;
 }
 
 type TaskT = ReturnType<typeof useTranslations<"task">>;
@@ -105,6 +127,18 @@ export function ClipTile({ clip, taskId, busy, best, editable, partTotal, onOpen
   const t = useTranslations("task");
   const title = clipTitle(clip, t);
   const why = clip.workflow_meta?.why;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyPostText = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const pt = clip.post_text || (clip.workflow_meta?.post_text as PostTextData | undefined);
+    const textToCopy = formatPostTextClipboard(pt || {}, title);
+    navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    toast.success("Post text copied!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <article className="group @container animate-rise">
       <button
@@ -154,6 +188,22 @@ export function ClipTile({ clip, taskId, busy, best, editable, partTotal, onOpen
           <Button size="sm" variant="outline" className="h-7 flex-1 px-2 text-xs" onClick={onDownload} disabled={busy} aria-label={t("downloadNamed", { title })}>
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}<span className="hidden @min-[190px]:inline">{t("download")}</span>
           </Button>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon-sm"
+                  variant="outline"
+                  className="size-7"
+                  onClick={handleCopyPostText}
+                  aria-label="Copy post text"
+                >
+                  {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Copy post text</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           {editable && (
             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" asChild>
               <Link href={`/tasks/${taskId}/edit?clip=${clip.id}`}><Scissors className="size-3.5" />{t("edit")}</Link>
@@ -167,6 +217,164 @@ export function ClipTile({ clip, taskId, busy, best, editable, partTotal, onOpen
         </div>
       </div>
     </article>
+  );
+}
+
+export function PostTextSection({
+  clip,
+  taskId,
+  onPostTextUpdated,
+}: {
+  clip: WallClip;
+  taskId: string;
+  onPostTextUpdated?: (postText: PostTextData) => void;
+}) {
+  const [postText, setPostText] = useState<PostTextData | null>(() => {
+    return clip.post_text || (clip.workflow_meta?.post_text as PostTextData | null) || null;
+  });
+  const [isCopying, setIsCopying] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  useEffect(() => {
+    setPostText(clip.post_text || (clip.workflow_meta?.post_text as PostTextData | null) || null);
+  }, [clip]);
+
+  const handleCopy = () => {
+    const textToCopy = formatPostTextClipboard(postText || {}, clip.hook_title || "");
+    navigator.clipboard.writeText(textToCopy);
+    setIsCopying(true);
+    toast.success("Post text copied to clipboard!");
+    setTimeout(() => setIsCopying(false), 2000);
+  };
+
+  const handleRegenerate = async () => {
+    if (isRegenerating) return;
+    setIsRegenerating(true);
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/clips/${clip.id}/post-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: clip.hook_title,
+          text: clip.text,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to regenerate post text");
+      const data = await response.json();
+      if (data.post_text) {
+        setPostText(data.post_text);
+        onPostTextUpdated?.(data.post_text);
+        toast.success("Post text regenerated with AI!");
+      }
+    } catch {
+      toast.error("Could not regenerate post text. Please try again.");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const hook = postText?.hook || "WATCH THIS";
+  const title = postText?.title || clip.hook_title || "Viral Clip";
+  const description = postText?.description || clip.text?.slice(0, 140) || "";
+  const hashtags = postText?.hashtags || [];
+  const highlightWords = postText?.highlight_words || [];
+
+  return (
+    <section className="space-y-3 rounded-xl border bg-card p-4 text-card-foreground shadow-xs">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="size-4 text-amber-500" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Post text</h3>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={handleRegenerate}
+            disabled={isRegenerating}
+          >
+            <RefreshCw className={cn("size-3.5", isRegenerating && "animate-spin")} />
+            <span className="hidden sm:inline">Regenerate</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 gap-1.5 text-xs font-medium"
+            onClick={handleCopy}
+          >
+            {isCopying ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {isCopying ? "Copied!" : "Copy post text"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2.5 text-sm">
+        {/* Hook */}
+        <div className="rounded-lg border bg-muted/40 p-2.5">
+          <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+            <span>HOOK · ON-SCREEN TEXT</span>
+            <span className="text-[10px] uppercase text-muted-foreground/80">Max 5 words</span>
+          </div>
+          <p className="font-mono text-sm font-bold tracking-wide text-foreground">
+            {hook}
+          </p>
+        </div>
+
+        {/* Title */}
+        <div className="rounded-lg border bg-muted/40 p-2.5">
+          <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+            <span>TITLE</span>
+            <span className="text-[10px] tabular-nums text-muted-foreground/80">
+              {title.length}/70 chars
+            </span>
+          </div>
+          <p className="font-medium text-foreground">{title}</p>
+        </div>
+
+        {/* Description */}
+        {description && (
+          <div className="rounded-lg border bg-muted/40 p-2.5">
+            <span className="mb-1 block text-[11px] font-semibold text-muted-foreground">DESCRIPTION</span>
+            <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+          </div>
+        )}
+
+        {/* Hashtags */}
+        {hashtags.length > 0 && (
+          <div>
+            <span className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">HASHTAGS</span>
+            <div className="flex flex-wrap gap-1.5">
+              {hashtags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
+                >
+                  #{tag.replace(/^#/, "")}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Highlight Words */}
+        {highlightWords.length > 0 && (
+          <div>
+            <span className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">HIGHLIGHT WORDS</span>
+            <div className="flex flex-wrap gap-1.5">
+              {highlightWords.map((word) => (
+                <span
+                  key={word}
+                  className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+                >
+                  {word}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -210,21 +418,21 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
 
   return (
     <Dialog open={clip !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[92dvh] max-w-5xl gap-0 overflow-hidden p-0 md:grid-cols-[auto_1fr]">
+      <DialogContent className="flex max-h-[92dvh] w-[calc(100%-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 md:h-[min(90dvh,780px)] md:flex-row">
         {clip && (
           <>
-            <div className="relative flex items-center justify-center bg-stone-950 p-3 md:p-4">
-              <DynamicVideoPlayer key={clip.id} src={getClipUrl(clip.video_url, clip.filename)} autoPlay className="h-[min(58dvh,560px)]! md:h-[min(80dvh,640px)]!" />
+            <div className="relative flex shrink-0 items-center justify-center bg-stone-950 p-3 md:h-full md:p-4">
+              <DynamicVideoPlayer key={clip.id} src={getClipUrl(clip.video_url, clip.filename)} autoPlay className="h-[min(42dvh,360px)]! md:h-full!" />
             </div>
-            <div className="flex min-h-0 flex-col overflow-y-auto">
-              <div className="flex items-center justify-between gap-2 border-b px-5 py-3 pr-12 text-xs text-muted-foreground">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b px-5 py-3 pr-12 text-xs text-muted-foreground">
                 <span className="tabular-nums">{t("position", { current: index + 1, total })}</span>
                 <div className="flex items-center gap-1">
                   <Button size="icon-sm" variant="ghost" onClick={() => onNavigate(-1)} aria-label={t("previous")}><ChevronLeft className="size-4" /></Button>
                   <Button size="icon-sm" variant="ghost" onClick={() => onNavigate(1)} aria-label={t("next")}><ChevronRight className="size-4" /></Button>
                 </div>
               </div>
-              <div className="space-y-5 p-5">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
                 <div>
                   {isPart(clip) && (
                     <p className="mb-1 text-xs font-medium tabular-nums text-muted-foreground">
@@ -284,10 +492,12 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
                   </section>
                 )}
 
+                <PostTextSection clip={clip} taskId={taskId} />
+
                 {clip.text && <TranscriptPreview text={clip.text} clipTitle={clipTitle(clip, t)} />}
                 {children}
               </div>
-              <div className="mt-auto flex flex-wrap items-center gap-2 border-t bg-muted/30 px-5 py-3">
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-t bg-muted/30 px-5 py-3">
                 <Button size="sm" onClick={onDownload} disabled={busy}>
                   {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}{t("download")}
                 </Button>

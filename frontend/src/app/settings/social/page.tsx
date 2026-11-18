@@ -234,10 +234,13 @@ function SocialSettingsContent() {
                         <p className="text-sm font-medium">{provider.display_name}</p>
                         {!provider.configured && (
                           <Badge variant="secondary" className="font-normal text-muted-foreground">
-                            {provider.paused ? t("page.paused") : t("page.comingSoon")}
+                            {provider.paused ? t("page.paused") : provider.setup_hint ? "Setup required" : t("page.comingSoon")}
                           </Badge>
                         )}
                       </div>
+                      {!provider.configured && !provider.paused && provider.setup_hint && (
+                        <p className="mt-1 text-xs text-muted-foreground">{provider.setup_hint}</p>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Tooltip>

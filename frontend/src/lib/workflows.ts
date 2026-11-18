@@ -291,6 +291,15 @@ export type WorkflowMeta = {
   // recap / trailer
   points?: WorkflowMetaPoint[];
   beats?: WorkflowMetaBeat[];
+  // PeakCut Post Text metadata
+  post_text?: {
+    hook: string;
+    title: string;
+    description: string;
+    hashtags: string[];
+    highlight_words: string[];
+    formatted_copy?: string;
+  } | null;
 };
 
 /** Workflow fields on a clip from `GET /tasks/{id}` and the SSE `clip_ready` payload. */

@@ -1450,6 +1450,89 @@ async def regenerate_clip(
         )
 
 
+@router.get("/{task_id}/clips/{clip_id}/post-text")
+async def get_clip_post_text(
+    task_id: str, clip_id: str, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Retrieve PeakCut Post Text metadata for a clip."""
+    task_service = TaskService(db)
+    await _require_task_reader(request, task_service, db, task_id)
+    clip = await task_service.clip_repo.get_clip_by_id(db, clip_id)
+    if not clip or clip.get("task_id") != task_id:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    return {"clip_id": clip_id, "post_text": clip.get("post_text")}
+
+
+@router.post("/{task_id}/clips/{clip_id}/post-text")
+async def generate_clip_post_text(
+    task_id: str, clip_id: str, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Generate or regenerate PeakCut Post Text metadata using AI."""
+    task_service = TaskService(db)
+    await _require_task_owner(request, task_service, db, task_id)
+    clip = await task_service.clip_repo.get_clip_by_id(db, clip_id)
+    if not clip or clip.get("task_id") != task_id:
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    payload = await _read_json_object(request)
+    clip_text = payload.get("text") or clip.get("text") or ""
+    clip_title = payload.get("title") or clip.get("hook_title") or ""
+
+    task = await task_service.task_repo.get_task_by_id(db, task_id)
+    source_title = None
+    if task and isinstance(task.get("source_metadata"), dict):
+        source_title = task["source_metadata"].get("title")
+
+    from ...services.post_text_service import generate_post_text_with_ai
+    post_text = await generate_post_text_with_ai(
+        clip_text=clip_text,
+        clip_title=clip_title,
+        source_title=source_title,
+    )
+
+    meta = dict(clip.get("workflow_meta") or {})
+    meta["post_text"] = post_text
+    await task_service.clip_repo.update_clip_workflow_meta(db, clip_id, meta)
+
+    return {"clip_id": clip_id, "post_text": post_text}
+
+
+@router.post("/{task_id}/post-text/backfill")
+async def backfill_task_post_text(
+    task_id: str, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Generate AI Post Text for all clips of a task."""
+    task_service = TaskService(db)
+    await _require_task_owner(request, task_service, db, task_id)
+    clips = await task_service.clip_repo.get_clips_by_task(db, task_id)
+    if not clips:
+        raise HTTPException(status_code=404, detail="No clips found for task")
+
+    task = await task_service.task_repo.get_task_by_id(db, task_id)
+    source_title = None
+    if task and isinstance(task.get("source_metadata"), dict):
+        source_title = task["source_metadata"].get("title")
+
+    from ...services.post_text_service import generate_post_text_with_ai
+
+    updated = []
+    for c in clips:
+        clip_id = c["id"]
+        clip_text = c.get("text") or ""
+        clip_title = c.get("hook_title") or ""
+        post_text = await generate_post_text_with_ai(
+            clip_text=clip_text,
+            clip_title=clip_title,
+            source_title=source_title,
+        )
+        meta = dict(c.get("workflow_meta") or {})
+        meta["post_text"] = post_text
+        await task_service.clip_repo.update_clip_workflow_meta(db, clip_id, meta)
+        updated.append({"clip_id": clip_id, "post_text": post_text})
+
+    return {"task_id": task_id, "clips": updated}
+
+
 @router.post("/{task_id}/settings")
 async def apply_task_settings(
     task_id: str, request: Request, db: AsyncSession = Depends(get_db)

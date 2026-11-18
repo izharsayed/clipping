@@ -44,6 +44,14 @@ def _workflow_meta(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _format_post_text(meta: Dict[str, Any], hook_title: Optional[str], text: Optional[str]) -> Dict[str, Any]:
+    from ..services.post_text_service import tidy_post_text
+    pt = meta.get("post_text")
+    if pt and isinstance(pt, dict) and pt.get("hook"):
+        return tidy_post_text(pt, fallback_title=hook_title or "", text=text or "")
+    return tidy_post_text({}, fallback_title=hook_title or "", text=text or "")
+
+
 _CLIP_COLUMNS = """id, task_id, filename, file_path, start_time, end_time, duration,
        text, relevance_score, reasoning, clip_order, created_at"""
 _SCORE_COLUMNS = """virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
@@ -268,6 +276,11 @@ class ClipRepository:
                     "workflow_role": getattr(row, "workflow_role", None),
                     "part_number": getattr(row, "part_number", None),
                     "workflow_meta": _workflow_meta(getattr(row, "workflow_meta", None)),
+                    "post_text": _format_post_text(
+                        _workflow_meta(getattr(row, "workflow_meta", None)),
+                        getattr(row, "hook_title", None),
+                        getattr(row, "text", None),
+                    ),
                 }
             )
 
@@ -356,6 +369,11 @@ class ClipRepository:
             "workflow_role": getattr(row, "workflow_role", None),
             "part_number": getattr(row, "part_number", None),
             "workflow_meta": _workflow_meta(getattr(row, "workflow_meta", None)),
+            "post_text": _format_post_text(
+                _workflow_meta(getattr(row, "workflow_meta", None)),
+                getattr(row, "hook_title", None),
+                getattr(row, "text", None),
+            ),
             "created_at": row.created_at.isoformat(),
             "video_url": f"/tasks/{row.task_id}/clips/{row.id}/file",
         }
@@ -452,3 +470,19 @@ class ClipRepository:
             {"ids": clip_ids, "task_id": task_id},
         )
         await commit_unless_editing(db)
+
+    @staticmethod
+    async def update_clip_workflow_meta(
+        db: AsyncSession,
+        clip_id: str,
+        workflow_meta: Dict[str, Any],
+    ) -> None:
+        """Update workflow_meta on a clip (e.g. post_text)."""
+        await db.execute(
+            sa_text(
+                "UPDATE generated_clips SET workflow_meta = CAST(:workflow_meta AS JSONB), updated_at = NOW() WHERE id = :clip_id"
+            ),
+            {"clip_id": clip_id, "workflow_meta": json.dumps(workflow_meta)},
+        )
+        await commit_unless_editing(db)
+

@@ -85,6 +85,34 @@ it("hides the publish button when no platform is configured", () => {
   expect(screen.queryByRole("button", { name: /publish/i })).toBeNull();
 });
 
+it("shows the publish button when social publishing is enabled even before OAuth setup", async () => {
+  render(
+    <ClipPublishButton
+      taskId="task-1"
+      clip={{
+        ...clip,
+        post_text: {
+          hook: "WATCH THIS",
+          title: "Ready Post Title",
+          description: "Ready post description.",
+          hashtags: ["viral", "shorts"],
+          highlight_words: ["ready"],
+        },
+      }}
+      connections={[]}
+      providers={[provider({ configured: false, setup_hint: "Set YOUTUBE_OAUTH_CLIENT_ID in .env." })]}
+      socialEnabled={true}
+      onChanged={vi.fn()}
+    />,
+  );
+  const btn = screen.getByRole("button", { name: /publish/i });
+  expect(btn).toBeInTheDocument();
+  fireEvent.click(btn);
+  expect(await screen.findByText("Ready Post Title")).toBeInTheDocument();
+  expect(screen.getByText("Ready post description.")).toBeInTheDocument();
+  expect(screen.getByText(/Set YOUTUBE_OAUTH_CLIENT_ID in \.env\./)).toBeInTheDocument();
+});
+
 it("keeps the form when connections refresh while the sheet is open", async () => {
   const providers = [provider()];
   const { rerender } = render(

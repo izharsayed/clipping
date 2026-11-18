@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../messages/en/task.json";
 
-import { ClipFocus, ClipTile, ProcessingPanel, clipProgressFromMessage, type WallClip } from "./clip-wall";
+import { ClipFocus, ClipTile, ProcessingPanel, clipProgressFromMessage, formatPostTextClipboard, PostTextSection, type WallClip } from "./clip-wall";
 import { GenerationCard } from "./generation-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { GenerationSummary } from "@/lib/generations";
@@ -136,6 +136,45 @@ describe("ClipFocus", () => {
     );
     expect(screen.getByText("Part 3 of 4")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Die Bank ruft an" })).toBeInTheDocument();
+  });
+});
+
+describe("PeakCut Post Text", () => {
+  it("formats clipboard text with title, description, and hashtags", () => {
+    const formatted = formatPostTextClipboard({
+      title: "How to Win Without Crushing Your Soul",
+      description: "A profound moment on why you should never quit without a clear plan.",
+      hashtags: ["careeradvice", "success", "mindset"],
+    });
+    expect(formatted).toBe(
+      "How to Win Without Crushing Your Soul\n\nA profound moment on why you should never quit without a clear plan.\n\n#careeradvice #success #mindset"
+    );
+  });
+
+  it("renders PostTextSection with hook, title, description, hashtags, and highlight words", () => {
+    render(
+      <PostTextSection
+        taskId="t"
+        clip={clip({
+          post_text: {
+            hook: "NEVER QUIT YOUR JOB",
+            title: "The #1 Career Rule",
+            description: "Build leverage before you make any career jump.",
+            hashtags: ["career", "business", "growth"],
+            highlight_words: ["quit", "job", "leverage"],
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText("Post text")).toBeInTheDocument();
+    expect(screen.getByText("NEVER QUIT YOUR JOB")).toBeInTheDocument();
+    expect(screen.getByText("The #1 Career Rule")).toBeInTheDocument();
+    expect(screen.getByText("Build leverage before you make any career jump.")).toBeInTheDocument();
+    expect(screen.getByText("#career")).toBeInTheDocument();
+    expect(screen.getByText("#business")).toBeInTheDocument();
+    expect(screen.getByText("leverage")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy post text/i })).toBeInTheDocument();
   });
 });
 

@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Check,
   Clock,
+  Copy,
   ExternalLink,
   Loader2,
   MoreHorizontal,
@@ -64,11 +65,21 @@ import {
 } from "@/lib/social";
 import type { WorkflowClipFields } from "@/lib/workflows";
 
+export interface PostTextData {
+  hook: string;
+  title: string;
+  description: string;
+  hashtags: string[];
+  highlight_words: string[];
+  formatted_copy?: string;
+}
+
 interface PublishableClip extends WorkflowClipFields {
   id: string;
   clip_order: number;
   hook_title: string | null;
   text: string | null;
+  post_text?: PostTextData | null;
 }
 
 interface ClipPublishButtonProps {
@@ -76,6 +87,7 @@ interface ClipPublishButtonProps {
   clip: PublishableClip;
   connections: SocialConnection[];
   providers: SocialProviderStatus[];
+  socialEnabled?: boolean;
   onChanged: () => void | Promise<void>;
 }
 
@@ -305,6 +317,7 @@ export function ClipPublishButton({
   clip,
   connections,
   providers,
+  socialEnabled = false,
   onChanged,
 }: ClipPublishButtonProps) {
   const t = useTranslations("social");
@@ -435,11 +448,19 @@ export function ClipPublishButton({
     const nextIds = retained.length ? retained : available.slice(0, 1).map((connection) => connection.id);
     setError(null);
     setSubmissions({});
+    const postText = clip.post_text || (clip.workflow_meta?.post_text as PostTextData | undefined);
     const plannedCaption = clip.workflow_meta?.post_caption?.trim();
-    setTitle(clip.hook_title
-      || (clip.workflow_role === "part" && clip.part_number ? tTask("partLabel", { n: clip.part_number }) : t("clipFallback", { order: clip.clip_order })));
-    setCaption(plannedCaption || clip.text || "");
-    setHashtags("");
+    setTitle(
+      postText?.title
+        || clip.hook_title
+        || (clip.workflow_role === "part" && clip.part_number ? tTask("partLabel", { n: clip.part_number }) : t("clipFallback", { order: clip.clip_order }))
+    );
+    setCaption(postText?.description || plannedCaption || clip.text || "");
+    setHashtags(
+      postText?.hashtags && postText.hashtags.length > 0
+        ? postText.hashtags.map((h) => `#${h.replace(/^#/, "")}`).join(" ")
+        : ""
+    );
     setSchedule(false);
     setScheduledFor(toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000)));
     setAccountIds(nextIds);
@@ -453,7 +474,7 @@ export function ClipPublishButton({
     }
     setOpen(true);
     // A series part arrives with a caption written for it (it teases the next part); keep it.
-    if (nextIds[0] && !plannedCaption) void generateCaption(nextIds[0]);
+    if (nextIds[0] && !plannedCaption && !postText?.description) void generateCaption(nextIds[0]);
   };
 
   const toggleAccount = (id: string) => {
@@ -462,8 +483,8 @@ export function ClipPublishButton({
     setAccountIds((ids) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]);
   };
 
-  // Without a configured platform there is nothing to publish to.
-  if (!anyProviderConfigured) return null;
+  // Without a configured platform and social publishing enabled there is nothing to publish to.
+  if (!anyProviderConfigured && !socialEnabled) return null;
 
   const handleSubmit = async () => {
     if (submitting.current || pendingConnections.length === 0 || !privacyReady) return;
@@ -574,14 +595,66 @@ export function ClipPublishButton({
             )}
 
             {activeConnections.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                {t.rich("emptyAccounts", {
-                  link: (chunks) => (
-                    <Link href="/settings/social" className="font-medium text-foreground underline underline-offset-4">
-                      {chunks}
+              <div className="space-y-4">
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground space-y-3">
+                  <p>
+                    {t.rich("emptyAccounts", {
+                      link: (chunks) => (
+                        <Link href="/settings/social" className="font-medium text-foreground underline underline-offset-4">
+                          {chunks}
+                        </Link>
+                      ),
+                    })}
+                  </p>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href="/settings/social">
+                      <ExternalLink className="size-3.5" />
+                      Open Social Accounts
                     </Link>
-                  ),
-                })}
+                  </Button>
+                </div>
+
+                {!anyProviderConfigured && providers.length > 0 && (
+                  <div className="rounded-lg border bg-muted/30 p-3.5 text-xs space-y-2">
+                    <p className="font-semibold text-foreground">Enable direct posting in .env</p>
+                    <p className="text-muted-foreground">
+                      Add OAuth credentials for the platforms you want to post to, then restart Docker and connect in Social Accounts:
+                    </p>
+                    <ul className="space-y-1.5 pt-1">
+                      {providers.map((provider) => (
+                        <li key={provider.provider} className="flex items-start gap-2 text-muted-foreground">
+                          <SocialProviderIcon provider={provider.provider} className="mt-0.5 size-3.5 shrink-0" />
+                          <span>
+                            <strong className="text-foreground">{provider.display_name}:</strong>{" "}
+                            {provider.setup_hint || "Configure OAuth credentials in .env."}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="rounded-lg border bg-card p-3.5 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold uppercase tracking-wide text-muted-foreground">Ready-to-post text</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={() => {
+                        const formatted = [title.trim(), caption.trim(), hashtags.trim()].filter(Boolean).join("\n\n");
+                        void navigator.clipboard.writeText(formatted);
+                        toast.success("Post text copied!");
+                      }}
+                    >
+                      <Copy className="size-3.5" />
+                      Copy post text
+                    </Button>
+                  </div>
+                  {title && <p className="font-medium text-foreground text-sm">{title}</p>}
+                  {caption && <p className="text-muted-foreground whitespace-pre-wrap">{caption}</p>}
+                  {hashtags && <p className="text-muted-foreground font-mono">{hashtags}</p>}
+                </div>
               </div>
             ) : (
               <>

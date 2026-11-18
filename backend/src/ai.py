@@ -208,6 +208,31 @@ def _default_virality_analysis() -> ViralityAnalysis:
     return ViralityAnalysis()
 
 
+class PostText(BaseModel):
+    """PeakCut Post Text metadata module."""
+
+    hook: str = Field(
+        default="",
+        description="At most 5 words, ALL CAPS, displayed on-screen to stop viewers scrolling. E.g. NEVER STAY IN THIS",
+    )
+    title: str = Field(
+        default="",
+        description="At most 70 characters, punchy title for the post optimized for CTR.",
+    )
+    description: str = Field(
+        default="",
+        description="1 or 2 concise sentences summarizing the moment.",
+    )
+    hashtags: List[str] = Field(
+        default_factory=list,
+        description="5 to 8 targeted tags without the # sign and without punctuation.",
+    )
+    highlight_words: List[str] = Field(
+        default_factory=list,
+        description="3 to 6 single words spoken in the clip that carry the punch.",
+    )
+
+
 class TranscriptSegment(BaseModel):
     """Represents a relevant segment of transcript with precise timing and virality analysis."""
 
@@ -255,6 +280,10 @@ class TranscriptSegment(BaseModel):
     hook_end_time: Optional[str] = Field(
         default=None,
         description="Optional MM:SS end of that hook line (null with hook_start_time).",
+    )
+    post_text: Optional[PostText] = Field(
+        default=None,
+        description="PeakCut Post Text metadata module (hook, title, description, hashtags, highlight_words)",
     )
 
     @field_validator("relevance_score", mode="before")

@@ -861,6 +861,15 @@ class TaskService(ClipEditingMixin):
                         "workflow_meta": meta or None,
                     }
 
+                if segment.get("post_text"):
+                    meta = copy.deepcopy(workflow_fields.get("workflow_meta") or segment.get("workflow_meta") or {})
+                    pt = segment.get("post_text")
+                    if hasattr(pt, "model_dump"):
+                        meta["post_text"] = pt.model_dump()
+                    elif isinstance(pt, dict):
+                        meta["post_text"] = pt
+                    workflow_fields["workflow_meta"] = meta
+
                 async with self._processing_transaction(task_id):
                     await check_cancelled()
                     clip_order = max(clip_ids_by_order, default=0) + 1
