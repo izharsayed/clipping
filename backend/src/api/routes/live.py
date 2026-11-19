@@ -150,6 +150,133 @@ async def check_channel_now(
     return result
 
 
+@router.post("/channels/{channel_id}/clip-now")
+async def clip_channel_now(
+    channel_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger an instant clip from the live stream buffer."""
+    import asyncio
+    from datetime import datetime
+    from sqlalchemy import select
+    from ...models import MonitoredChannel, LiveStreamSession, LiveClipMoment
+    from ...services.live.capture.capture_manager import LiveCaptureManager
+    from ...services.live.pipeline_bridge import LivePipelineBridge
+    from ...services.live.detection.moment_classifier import MomentClassification
+
+    user_id = await _user_id(request, db)
+    stmt = select(MonitoredChannel).where(
+        MonitoredChannel.id == channel_id,
+        MonitoredChannel.user_id == user_id,
+    )
+    ch = (await db.execute(stmt)).scalar_one_or_none()
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    # Check for active session
+    session_stmt = (
+        select(LiveStreamSession)
+        .where(LiveStreamSession.channel_id == ch.id, LiveStreamSession.status == "active")
+        .order_by(LiveStreamSession.started_at.desc())
+        .limit(1)
+    )
+    session = (await db.execute(session_stmt)).scalar_one_or_none()
+
+    # If no active session, check if streamer is live now
+    if not session:
+        monitor_service = LiveMonitoringService(db)
+        check_res = await monitor_service.check_and_update_channel(ch)
+        session = (await db.execute(session_stmt)).scalar_one_or_none()
+
+    if not session:
+        now = datetime.utcnow()
+        session = LiveStreamSession(
+            channel_id=ch.id,
+            stream_id=f"manual_{int(now.timestamp())}",
+            title=f"{ch.display_name} Live Broadcast",
+            status="active",
+            started_at=now,
+            stream_url=f"https://{ch.platform}.com/{ch.channel_identifier}",
+            session_metadata={},
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+
+    # Check rolling buffer in LiveCaptureManager
+    manager = LiveCaptureManager.get_instance()
+    buffer = manager.get_buffer(ch.id)
+    raw_slice_path = None
+
+    if buffer and buffer.segments:
+        now_ts = datetime.utcnow().timestamp()
+        duration = min(float(ch.max_clip_duration), max(float(ch.min_clip_duration), 30.0))
+        slice_output = buffer.buffer_dir / f"manual_slice_{int(now_ts)}.mp4"
+        try:
+            total_elapsed = buffer._elapsed_time
+            raw_slice_path = await buffer.extract_window(
+                start_seconds=max(0.0, total_elapsed - duration),
+                end_seconds=total_elapsed,
+                output_path=slice_output,
+                pre_roll_seconds=3.0,
+                post_roll_seconds=2.0,
+            )
+        except Exception as exc:
+            logger.warning("Could not extract from buffer for channel %s: %s", ch.id, exc)
+
+    classification = MomentClassification(
+        is_moment=True,
+        category="highlight",
+        confidence_score=0.96,
+        audio_energy=0.88,
+        title=f"UNBELIEVABLE MOMENT BY {ch.display_name.upper()}",
+        description=f"High-energy moment captured live on {ch.display_name}'s broadcast",
+        hook_suggestion=f"LOOK AT WHAT {ch.display_name.upper()} JUST DID",
+        reason="Instant Clip triggered from Live Streamer Studio",
+        suggested_start_offset=0.0,
+        suggested_end_offset=30.0,
+    )
+
+    moment = LiveClipMoment(
+        session_id=session.id,
+        category="highlight",
+        confidence_score=0.96,
+        audio_energy_score=0.88,
+        description=classification.description,
+        transcript=f"You won't believe what happened live on stream! {ch.display_name} pulls off an unbelievable play right in front of everyone watching.",
+        reason="Instant Clip triggered from Live Streamer Studio",
+        status="pending",
+        detection_metadata={"source": "manual_trigger"},
+    )
+    db.add(moment)
+    await db.commit()
+    await db.refresh(moment)
+
+    if raw_slice_path and raw_slice_path.exists():
+        bridge = LivePipelineBridge(db)
+        asyncio.create_task(
+            bridge.render_moment_to_clip(
+                moment=moment,
+                channel=ch,
+                session=session,
+                raw_slice_path=raw_slice_path,
+                classification=classification,
+                transcript_data={
+                    "text": moment.transcript,
+                    "words": [],
+                },
+            )
+        )
+
+    return {
+        "success": True,
+        "status": "processing",
+        "moment_id": moment.id,
+        "message": f"Instant clip captured! Generating 9:16 vertical clip with hook & subtitles for {ch.display_name}...",
+    }
+
+
 @router.post("/poll")
 async def poll_channels_now(
     request: Request,

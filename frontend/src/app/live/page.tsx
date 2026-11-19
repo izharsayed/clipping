@@ -806,33 +806,33 @@ export default function LiveDashboardPage() {
                     <Card key={ch.id} className="bg-card border-border overflow-hidden">
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
+                          <Link href={`/live/${ch.id}`} className="flex items-center gap-3 group/link min-w-0">
                             {ch.avatar_url ? (
                               <Image
                                 src={ch.avatar_url}
                                 alt={ch.display_name}
                                 width={40}
                                 height={40}
-                                className="rounded-full border border-border"
+                                className="rounded-full border border-border group-hover/link:ring-2 ring-primary/40 transition-all"
                                 unoptimized
                               />
                             ) : (
-                              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center font-bold text-primary">
+                              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center font-bold text-primary group-hover/link:ring-2 ring-primary/40 transition-all">
                                 {ch.display_name.slice(0, 2).toUpperCase()}
                               </div>
                             )}
-                            <div>
-                              <CardTitle className="text-base font-bold flex items-center gap-2">
+                            <div className="min-w-0">
+                              <CardTitle className="text-base font-bold flex items-center gap-2 group-hover/link:text-primary transition-colors truncate">
                                 {ch.display_name}
-                                <Badge variant="outline" className="text-[10px] uppercase">
+                                <Badge variant="outline" className="text-[10px] uppercase shrink-0">
                                   {ch.platform}
                                 </Badge>
                               </CardTitle>
-                              <CardDescription className="text-xs font-mono">
+                              <CardDescription className="text-xs font-mono truncate">
                                 {ch.channel_identifier}
                               </CardDescription>
                             </div>
-                          </div>
+                          </Link>
 
                           {/* Status Pill */}
                           {isLive ? (
@@ -881,6 +881,15 @@ export default function LiveDashboardPage() {
                             <span className="line-clamp-1">{ch.last_error}</span>
                           </div>
                         )}
+
+                        {/* Stream Studio Preview Button */}
+                        <Button asChild size="sm" variant="outline" className="w-full gap-2 text-xs h-8">
+                          <Link href={`/live/${ch.id}`}>
+                            <Tv className="w-3.5 h-3.5 text-primary" />
+                            <span>Preview Stream & Studio</span>
+                            <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+                          </Link>
+                        </Button>
 
                         {/* Channel Controls */}
                         <div className="pt-2 border-t border-border flex items-center justify-between">

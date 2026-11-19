@@ -165,6 +165,7 @@ class LiveChannelService:
             .limit(10)
         )
         sessions = (await self.db.execute(sessions_stmt)).scalars().all()
+        active_session = next((s for s in sessions if s.status == "active"), None)
 
         return {
             "id": ch.id,
@@ -182,6 +183,13 @@ class LiveChannelService:
             "max_clip_duration": ch.max_clip_duration,
             "preferred_categories": ch.preferred_categories,
             "auto_publish": ch.auto_publish,
+            "active_session": {
+                "id": active_session.id,
+                "title": active_session.title,
+                "game_name": active_session.game_name,
+                "started_at": active_session.started_at.isoformat() if active_session.started_at else None,
+                "stream_url": active_session.stream_url,
+            } if active_session else None,
             "sessions": [
                 {
                     "id": s.id,
