@@ -229,6 +229,7 @@ def create_app(
     from .api.routes.stripe_cancellations import router as stripe_cancellations_router
     from .api.routes.mcp_oauth import consent_router as mcp_oauth_consent_router
     from .api.routes.mcp_oauth import internal_router as mcp_oauth_internal_router
+    from .api.routes.live import router as live_router
 
     app.include_router(media_router)
     app.include_router(feedback_router)
@@ -242,6 +243,7 @@ def create_app(
     app.include_router(stripe_cancellations_router)
     app.include_router(mcp_oauth_internal_router)
     app.include_router(mcp_oauth_consent_router)
+    app.include_router(live_router)
 
     @app.get("/")
     def read_root():

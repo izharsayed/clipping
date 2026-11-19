@@ -258,6 +258,17 @@ async def refresh_social_metrics(ctx: Dict[str, Any]) -> Dict[str, Any]:
     return {"refreshed": refreshed, "purged_oauth_states": purged}
 
 
+async def poll_live_monitored_channels(ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """Cron: scan active monitored channels and check live stream statuses."""
+    from ..database import AsyncSessionLocal
+    from ..services.live.monitoring_service import LiveMonitoringService
+
+    async with AsyncSessionLocal() as db:
+        service = LiveMonitoringService(db)
+        results = await service.poll_active_channels(force=False)
+    return {"checked": len(results), "results": results}
+
+
 SCRATCH_SWEEP_SECONDS = 10 * 60
 ORPHAN_SWEEP_EVERY = 36  # passes, about six hours
 

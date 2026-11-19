@@ -111,6 +111,7 @@ model User {
   social_accounts     SocialAccount[]
   social_oauth_states SocialOauthState[]
   social_posts        SocialPost[]
+  monitored_channels  MonitoredChannel[]
 
   @@map("users")
   feature_tours UserFeatureTour[]
@@ -265,6 +266,7 @@ model Task {
   user                 User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   source               Source?   @relation(fields: [source_id], references: [id], onDelete: SetNull)
   social_posts         SocialPost[]
+  live_moments         LiveClipMoment[]
 
   @@index([user_id])
   @@index([source_id])
@@ -504,4 +506,81 @@ model UserFeatureTour {
   @@id([user_id, tour_id])
   @@index([tour_id], map: "ix_user_feature_tours_tour")
   @@map("user_feature_tours")
+}
+
+model MonitoredChannel {
+  id                   String              @id @default(uuid()) @db.VarChar(36)
+  user_id              String              @db.VarChar(36)
+  platform             String              @db.VarChar(20)
+  channel_identifier   String              @db.VarChar(255)
+  display_name         String              @db.VarChar(255)
+  avatar_url           String?             @db.VarChar(500)
+  is_active            Boolean             @default(true)
+  status               String              @default("offline") @db.VarChar(20)
+  last_checked_at      DateTime?           @db.Timestamptz
+  last_live_at         DateTime?           @db.Timestamptz
+  last_error           String?             @db.Text
+  max_clips_per_stream Int                 @default(5)
+  min_clip_duration    Int                 @default(20)
+  max_clip_duration    Int                 @default(60)
+  preferred_categories Json                @default("[]") @db.JsonB
+  auto_publish         Boolean             @default(false)
+  created_at           DateTime            @default(now()) @db.Timestamptz
+  updated_at           DateTime            @default(now()) @updatedAt @db.Timestamptz
+
+  user                 User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  sessions             LiveStreamSession[]
+
+  @@unique([user_id, platform, channel_identifier], map: "uq_monitored_channels_user_platform_identifier")
+  @@index([user_id, is_active], map: "idx_monitored_channels_user")
+  @@index([is_active, status, last_checked_at], map: "idx_monitored_channels_active_poll")
+  @@map("monitored_channels")
+}
+
+model LiveStreamSession {
+  id               String            @id @default(uuid()) @db.VarChar(36)
+  channel_id       String            @db.VarChar(36)
+  stream_id        String?           @db.VarChar(255)
+  title            String?           @db.VarChar(500)
+  game_name        String?           @db.VarChar(255)
+  status           String            @default("active") @db.VarChar(20)
+  started_at       DateTime          @default(now()) @db.Timestamptz
+  ended_at         DateTime?         @db.Timestamptz
+  stream_url       String?           @db.VarChar(1000)
+  clips_count      Int               @default(0)
+  session_metadata Json              @default("{}") @db.JsonB
+  created_at       DateTime          @default(now()) @db.Timestamptz
+  updated_at       DateTime          @default(now()) @updatedAt @db.Timestamptz
+
+  channel          MonitoredChannel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  moments          LiveClipMoment[]
+
+  @@index([channel_id, status], map: "idx_live_stream_sessions_channel")
+  @@index([status, started_at], map: "idx_live_stream_sessions_active")
+  @@map("live_stream_sessions")
+}
+
+model LiveClipMoment {
+  id                 String             @id @default(uuid()) @db.VarChar(36)
+  session_id         String             @db.VarChar(36)
+  task_id            String?            @db.VarChar(36)
+  clip_id            String?            @db.VarChar(36)
+  start_seconds      Float              @db.Real
+  end_seconds        Float              @db.Real
+  category           String             @default("highlight") @db.VarChar(50)
+  confidence_score   Float              @default(0.8) @db.Real
+  audio_energy_score Float              @default(0.0) @db.Real
+  description        String?            @db.Text
+  transcript         String?            @db.Text
+  reason             String?            @db.Text
+  status             String             @default("pending") @db.VarChar(20)
+  created_at         DateTime           @default(now()) @db.Timestamptz
+  updated_at         DateTime           @default(now()) @updatedAt @db.Timestamptz
+
+  session            LiveStreamSession  @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  task               Task?              @relation(fields: [task_id], references: [id], onDelete: SetNull)
+
+  @@index([session_id, status], map: "idx_live_clip_moments_session")
+  @@index([status, created_at], map: "idx_live_clip_moments_status")
+  @@map("live_clip_moments")
 }

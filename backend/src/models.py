@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    UniqueConstraint,
     text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -109,6 +110,9 @@ class User(Base):
     # Relationships
     tasks: Mapped[List["Task"]] = relationship(
         "Task", back_populates="user", cascade="all, delete-orphan"
+    )
+    monitored_channels: Mapped[List["MonitoredChannel"]] = relationship(
+        "MonitoredChannel", back_populates="user", cascade="all, delete-orphan"
     )
 
 
@@ -372,3 +376,176 @@ class ProcessingCache(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class MonitoredChannel(Base):
+    __tablename__ = "monitored_channels"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid_string
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    channel_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sql_text("'true'")
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=sql_text("'offline'")
+    )
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_live_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    max_clips_per_stream: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'5'")
+    )
+    min_clip_duration: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'20'")
+    )
+    max_clip_duration: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'60'")
+    )
+    preferred_categories: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sql_text("'[]'::jsonb")
+    )
+    auto_publish: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sql_text("'false'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "platform IN ('twitch', 'youtube', 'kick')",
+            name="check_monitored_channel_platform",
+        ),
+        CheckConstraint(
+            "status IN ('monitoring', 'live', 'offline', 'processing', 'error')",
+            name="check_monitored_channel_status",
+        ),
+        UniqueConstraint(
+            "user_id", "platform", "channel_identifier",
+            name="uq_monitored_channels_user_platform_identifier",
+        ),
+        Index("idx_monitored_channels_user", "user_id", "is_active"),
+        Index("idx_monitored_channels_active_poll", "is_active", "status", "last_checked_at"),
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="monitored_channels")
+    sessions: Mapped[List["LiveStreamSession"]] = relationship(
+        "LiveStreamSession", back_populates="channel", cascade="all, delete-orphan"
+    )
+
+
+class LiveStreamSession(Base):
+    __tablename__ = "live_stream_sessions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid_string
+    )
+    channel_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("monitored_channels.id", ondelete="CASCADE"), nullable=False
+    )
+    stream_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    game_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=sql_text("'active'")
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stream_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    clips_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'0'")
+    )
+    session_metadata: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sql_text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'ended', 'error')",
+            name="check_live_stream_session_status",
+        ),
+        Index("idx_live_stream_sessions_channel", "channel_id", "status"),
+        Index("idx_live_stream_sessions_active", "status", "started_at"),
+    )
+
+    channel: Mapped["MonitoredChannel"] = relationship("MonitoredChannel", back_populates="sessions")
+    moments: Mapped[List["LiveClipMoment"]] = relationship(
+        "LiveClipMoment", back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class LiveClipMoment(Base):
+    __tablename__ = "live_clip_moments"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid_string
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("live_stream_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    task_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    clip_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("generated_clips.id", ondelete="SET NULL"), nullable=True
+    )
+    start_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    end_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default=sql_text("'highlight'")
+    )
+    confidence_score: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default=sql_text("'0.8'")
+    )
+    audio_energy_score: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default=sql_text("'0.0'")
+    )
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    transcript: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=sql_text("'pending'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'published', 'failed')",
+            name="check_live_clip_moment_status",
+        ),
+        Index("idx_live_clip_moments_session", "session_id", "status"),
+        Index("idx_live_clip_moments_status", "status", "created_at"),
+    )
+
+    session: Mapped["LiveStreamSession"] = relationship("LiveStreamSession", back_populates="moments")
+
