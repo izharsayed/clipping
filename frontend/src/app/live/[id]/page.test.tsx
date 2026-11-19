@@ -70,7 +70,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+    vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/live/channels/ch-123/clip-now")) {
         return new Response(
           JSON.stringify({

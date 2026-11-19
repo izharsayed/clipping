@@ -94,6 +94,7 @@ type LiveMoment = {
     game_name?: string | null;
   };
   clip?: {
+    id?: string;
     filename: string;
     duration: number;
     virality_score: number;
@@ -618,11 +619,11 @@ export default function LiveDashboardPage() {
                     <Card key={moment.id} className="bg-card border-border overflow-hidden flex flex-col justify-between">
                       {/* Video Player or Placeholder */}
                       <div className="relative aspect-[9/16] max-h-[380px] w-full bg-black/80 flex items-center justify-center overflow-hidden border-b border-border">
-                        {moment.task_id && moment.clip?.filename ? (
+                        {moment.task_id && (moment.clip_id || moment.clip?.id) ? (
                           <video
                             controls
                             className="w-full h-full object-contain"
-                            src={`/api/tasks/${moment.task_id}/clips/${moment.clip.filename}`}
+                            src={`/api/tasks/${moment.task_id}/clips/${moment.clip_id || moment.clip?.id}/file`}
                           />
                         ) : (
                           <div className="text-center p-4 space-y-2 text-muted-foreground">
@@ -767,9 +768,9 @@ export default function LiveDashboardPage() {
                                   Editor <ExternalLink className="w-3 h-3" />
                                 </Link>
                               )}
-                              {moment.task_id && moment.clip?.filename && (
+                              {moment.task_id && (moment.clip_id || moment.clip?.id) && (
                                 <a
-                                  href={`/api/tasks/${moment.task_id}/clips/${moment.clip.filename}`}
+                                  href={`/api/tasks/${moment.task_id}/clips/${moment.clip_id || moment.clip?.id}/file`}
                                   download
                                   className="hover:text-foreground"
                                   title="Download MP4"

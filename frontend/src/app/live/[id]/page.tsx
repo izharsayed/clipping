@@ -77,6 +77,7 @@ type MomentClip = {
   status: "pending" | "approved" | "rejected";
   created_at?: string | null;
   clip?: {
+    id?: string;
     filename: string;
     duration: number;
     virality_score: number;
@@ -666,12 +667,12 @@ export default function StreamerPreviewPage() {
                         </div>
 
                         {/* Video Player or Processing Placeholder */}
-                        {moment.task_id && moment.clip?.filename ? (
+                        {moment.task_id && (moment.clip_id || moment.clip?.id) ? (
                           <div className="relative aspect-[9/16] max-h-[220px] w-full rounded-lg bg-black overflow-hidden border border-border">
                             <video
                               controls
                               className="w-full h-full object-contain"
-                              src={`/api/tasks/${moment.task_id}/clips/${moment.clip.filename}`}
+                              src={`/api/tasks/${moment.task_id}/clips/${moment.clip_id || moment.clip?.id}/file`}
                             />
                             {moment.clip?.duration ? (
                               <div className="absolute bottom-2 right-2 pointer-events-none">
@@ -753,10 +754,10 @@ export default function StreamerPreviewPage() {
                               </Button>
                             )}
 
-                            {moment.task_id && moment.clip?.filename && (
+                            {moment.task_id && (moment.clip_id || moment.clip?.id) && (
                               <Button asChild size="sm" variant="ghost" className="h-7 size-7 p-0">
                                 <a
-                                  href={`/api/tasks/${moment.task_id}/clips/${moment.clip.filename}`}
+                                  href={`/api/tasks/${moment.task_id}/clips/${moment.clip_id || moment.clip?.id}/file`}
                                   download
                                   title="Download clip"
                                 >

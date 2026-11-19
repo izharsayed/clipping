@@ -322,6 +322,11 @@ async def list_live_moments(
     for moment, session, channel, clip in rows:
         meta = clip.workflow_meta if clip else {}
         post_text = meta.get("post_text") if isinstance(meta, dict) else None
+        hook_title = None
+        if isinstance(post_text, dict):
+            hook_title = post_text.get("hook") or post_text.get("title")
+        if not hook_title and clip:
+            hook_title = getattr(clip, "hook_title", None) or getattr(clip, "text", None)
 
         results.append({
             "id": moment.id,
@@ -347,10 +352,11 @@ async def list_live_moments(
                 "game_name": session.game_name,
             },
             "clip": {
+                "id": clip.id,
                 "filename": clip.filename,
                 "duration": clip.duration,
                 "virality_score": clip.virality_score,
-                "hook_title": clip.hook_title,
+                "hook_title": hook_title,
                 "post_text": post_text,
             } if clip else None,
         })
