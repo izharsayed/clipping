@@ -77,6 +77,7 @@ async def render_niche_project(
             name=request_data.name,
             plan=request_data.plan,
             output_filename=request_data.output_name,
+            video_url=request_data.video_url,
         )
         return NicheRenderResponse(
             success=True,

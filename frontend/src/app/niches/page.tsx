@@ -13,6 +13,7 @@ import {
   Flame,
   Gamepad2,
   HelpCircle,
+  Link2,
   Mic,
   RefreshCw,
   Sliders,
@@ -93,16 +94,21 @@ export default function NichesStudioPage() {
   const [recentClips, setRecentClips] = useState<any[]>([]);
   const [copied, setCopied] = useState(false);
 
-  // Form State
+  // Form State & Video Link Input
   const [projectName, setProjectName] = useState("GTA 6 File Size");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [topVideoUrl, setTopVideoUrl] = useState("");
+  const [bottomVideoUrl, setBottomVideoUrl] = useState("");
+  const [libraryVideos, setLibraryVideos] = useState<Array<{ id: string; title: string }>>([]);
   const [activePlan, setActivePlan] = useState<any>(null);
   const [previewingVoice, setPreviewingVoice] = useState(false);
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const [tplRes, recentRes] = await Promise.all([
+      const [tplRes, recentRes, tasksRes] = await Promise.all([
         fetch("/api/niches/templates"),
         fetch("/api/niches/recent"),
+        fetch("/api/tasks?limit=15").catch(() => null),
       ]);
 
       if (tplRes.ok) {
@@ -116,6 +122,17 @@ export default function NichesStudioPage() {
 
       if (recentRes.ok) {
         setRecentClips(await recentRes.json());
+      }
+
+      if (tasksRes && tasksRes.ok) {
+        const tasksData = await tasksRes.json();
+        const items = Array.isArray(tasksData) ? tasksData : tasksData.items || [];
+        setLibraryVideos(
+          items.map((t: any) => ({
+            id: t.id,
+            title: t.source_metadata?.title || t.name || `Video Task ${t.id.slice(0, 8)}`,
+          }))
+        );
       }
     } catch (err) {
       console.error("Failed to load niche templates:", err);
@@ -174,7 +191,13 @@ export default function NichesStudioPage() {
       const payload = {
         niche: selectedNiche,
         name: projectName || "Viral Gaming Short",
-        plan: activePlan,
+        video_url: videoUrl.trim() || undefined,
+        plan: {
+          ...activePlan,
+          video_url: videoUrl.trim() || undefined,
+          top_video_url: topVideoUrl.trim() || videoUrl.trim() || undefined,
+          bottom_video_url: bottomVideoUrl.trim() || videoUrl.trim() || undefined,
+        },
       };
 
       const res = await fetch("/api/niches/render", {
@@ -332,6 +355,89 @@ export default function NichesStudioPage() {
                     placeholder="e.g. GTA 6 File Size Is Insane"
                     className="bg-background"
                   />
+                </div>
+
+                {/* Source Gameplay Video Input */}
+                <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-primary" />
+                      <Label className="text-xs font-semibold text-foreground">
+                        {selectedNiche === "compare" ? "Source Gameplay Links (Stacked Split)" : "Source Gameplay Video Link"}
+                      </Label>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-primary/30">
+                      YouTube, Twitch, Kick, or MP4 URL
+                    </Badge>
+                  </div>
+
+                  {selectedNiche === "compare" ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Top Gameplay Link ({activePlan?.top_label || "Top Game"})</Label>
+                        <Input
+                          value={topVideoUrl}
+                          onChange={(e) => setTopVideoUrl(e.target.value)}
+                          placeholder="Paste YouTube or Twitch link for top half (e.g. https://www.youtube.com/watch?v=...)"
+                          className="bg-background text-xs font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Bottom Gameplay Link ({activePlan?.bottom_label || "Bottom Game"})</Label>
+                        <Input
+                          value={bottomVideoUrl}
+                          onChange={(e) => setBottomVideoUrl(e.target.value)}
+                          placeholder="Paste YouTube or Twitch link for bottom half (e.g. https://www.youtube.com/watch?v=...)"
+                          className="bg-background text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <Input
+                          value={videoUrl}
+                          onChange={(e) => setVideoUrl(e.target.value)}
+                          placeholder="Paste YouTube, Twitch, Kick, or direct MP4 link (e.g. https://www.youtube.com/watch?v=...)"
+                          className="bg-background pr-16 text-xs font-mono"
+                        />
+                        {videoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setVideoUrl("")}
+                            className="absolute right-2 top-2 text-[11px] text-muted-foreground hover:text-foreground font-medium"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {libraryVideos.length > 0 && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="text-[11px] text-muted-foreground">Or pick from library:</span>
+                          <Select onValueChange={(val) => setVideoUrl(val)}>
+                            <SelectTrigger className="h-7 text-xs bg-background flex-1">
+                              <SelectValue placeholder="Select existing task video..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {libraryVideos.map((lv) => (
+                                <SelectItem key={lv.id} value={lv.id} className="text-xs">
+                                  {lv.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                    <span>💡</span>
+                    <span>
+                      Paste any video link to render with your own gameplay, or leave empty to use built-in sample gameplay.
+                    </span>
+                  </p>
                 </div>
 
                 {/* Niche Specific Form Controls */}

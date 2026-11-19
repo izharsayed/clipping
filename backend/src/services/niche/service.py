@@ -187,6 +187,7 @@ class NicheStudioService:
         name: str,
         plan: Dict[str, Any],
         output_filename: Optional[str] = None,
+        video_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Executes rendering of the niche project and registers it into SupoClip."""
         clean_name = re_slug(name, 36)
@@ -197,7 +198,8 @@ class NicheStudioService:
         work_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Resolve source video fallback if not provided in plan
-        source_fallback = await self._find_available_gameplay_source(user_id)
+        primary_source_url = video_url or plan.get("video_url")
+        source_fallback = await self._resolve_source_video(primary_source_url, user_id)
 
         # 2. Build segments and overlay layers according to niche mode
         segments: List[Dict[str, Any]] = []
@@ -247,6 +249,12 @@ class NicheStudioService:
                 overlays.append((est_time, est_time + float(plan.get("picture_hold", 2.8)), p_path, (1080 - pic_card.width) // 2, 700))
 
         elif niche == "compare":
+            top_source = await self._resolve_source_video(
+                plan.get("top_video_url") or primary_source_url, user_id
+            )
+            bot_source = await self._resolve_source_video(
+                plan.get("bottom_video_url") or primary_source_url, user_id
+            )
             pairs = plan.get("pairs") or DEFAULT_PLANS["compare"]["pairs"]
             top_pill = draw.pill(plan.get("top_label", "GTA 6"), plan.get("top_sub", "NEXT GEN"), size=62)
             bot_pill = draw.pill(plan.get("bottom_label", "GTA 5"), plan.get("bottom_sub", "2013"), size=62)
@@ -260,8 +268,8 @@ class NicheStudioService:
                 top_cfg = dict(pr.get("top", {}))
                 bot_cfg = dict(pr.get("bottom", {}))
                 length = float(pr.get("length", 6.0))
-                top_cfg["file"] = top_cfg.get("file") or source_fallback
-                bot_cfg["file"] = bot_cfg.get("file") or source_fallback
+                top_cfg["file"] = top_cfg.get("file") or top_source
+                bot_cfg["file"] = bot_cfg.get("file") or bot_source
                 top_cfg["a"] = float(top_cfg.get("a", 0.0))
                 top_cfg["b"] = top_cfg["a"] + length
                 bot_cfg["a"] = float(bot_cfg.get("a", 0.0))
@@ -503,6 +511,74 @@ class NicheStudioService:
             "formatted_copy": formatted,
             "hook": post_spec.get("hook") or title,
         }
+
+    async def _resolve_source_video(self, source: Optional[str], user_id: str) -> str:
+        """Resolves source video from a URL (YouTube, Twitch, Kick, direct MP4), task/clip ID, or local file."""
+        if not source or not str(source).strip():
+            return await self._find_available_gameplay_source(user_id)
+
+        src_str = str(source).strip()
+
+        # 1. URL Download (YouTube, Twitch, Kick, direct link)
+        if src_str.startswith(("http://", "https://")):
+            return await self._download_url_source(src_str)
+
+        # 2. Direct local file path
+        if Path(src_str).exists():
+            return src_str
+
+        # 3. SupoClip Task or Clip ID lookup
+        try:
+            stmt = select(GeneratedClip.file_path).where(
+                (GeneratedClip.id == src_str) | (GeneratedClip.task_id == src_str)
+            ).order_by(GeneratedClip.created_at.desc()).limit(1)
+            row = (await self.db.execute(stmt)).scalar_one_or_none()
+            if row and Path(row).exists():
+                return row
+        except Exception as exc:
+            logger.warning("Failed to lookup clip/task ID %s: %s", src_str, exc)
+
+        return await self._find_available_gameplay_source(user_id)
+
+    async def _download_url_source(self, url: str) -> str:
+        """Downloads video using yt-dlp to a local cache directory."""
+        import hashlib
+        cache_dir = Path(self.config.temp_dir) / "niche_downloads"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:12]
+        expected_mp4 = cache_dir / f"src_{url_hash}.mp4"
+
+        if expected_mp4.exists() and expected_mp4.stat().st_size > 50000:
+            logger.info("Using cached download for %s: %s", url, expected_mp4)
+            return str(expected_mp4)
+
+        try:
+            import yt_dlp
+            out_pattern = str(cache_dir / f"src_{url_hash}.%(ext)s")
+            ydl_opts = {
+                "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "outtmpl": out_pattern,
+                "quiet": True,
+                "no_warnings": True,
+                "merge_output_format": "mp4",
+            }
+            loop = asyncio.get_event_loop()
+            def _dl():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            await loop.run_in_executor(None, _dl)
+
+            if expected_mp4.exists():
+                return str(expected_mp4)
+
+            candidates = list(cache_dir.glob(f"src_{url_hash}.*"))
+            if candidates and candidates[0].stat().st_size > 50000:
+                return str(candidates[0])
+        except Exception as exc:
+            logger.exception("Failed to download video from %s: %s", url, exc)
+
+        logger.warning("Could not download %s, falling back to local source", url)
+        return await self._find_available_gameplay_source("")
 
     async def _find_available_gameplay_source(self, user_id: str) -> str:
         """Finds an existing video in SupoClip uploads/clips or generates a placeholder stream."""

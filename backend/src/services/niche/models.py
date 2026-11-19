@@ -102,6 +102,7 @@ class NicheRenderRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     plan: Dict[str, Any]
     output_name: Optional[str] = None
+    video_url: Optional[str] = None
 
 class NicheRenderResponse(BaseModel):
     success: bool
