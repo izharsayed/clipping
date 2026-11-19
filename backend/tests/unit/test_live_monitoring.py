@@ -34,6 +34,8 @@ def test_provider_identifier_parsing():
     assert youtube.parse_channel_identifier("@mkbhd") == "@mkbhd"
     assert youtube.parse_channel_identifier("https://www.youtube.com/@veritasium") == "@veritasium"
     assert youtube.parse_channel_identifier("https://www.youtube.com/channel/UC12345/live") == "UC12345"
+    assert youtube.parse_channel_identifier("https://www.youtube.com/live/LMbea5SozeM") == "LMbea5SozeM"
+    assert youtube.parse_channel_identifier("https://www.youtube.com/watch?v=LMbea5SozeM") == "LMbea5SozeM"
 
 
 def test_get_stream_provider_factory():

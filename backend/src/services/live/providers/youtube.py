@@ -32,6 +32,15 @@ class YouTubeLiveProvider(BaseStreamProvider):
             parts = path.split("/")
             if parts and parts[0] in {"channel", "c", "user"} and len(parts) > 1:
                 return parts[1]
+            if parts and parts[0] == "live" and len(parts) > 1:
+                return parts[1]
+            if "v=" in parsed.query:
+                from urllib.parse import parse_qs
+                v = parse_qs(parsed.query).get("v")
+                if v:
+                    return v[0]
+            if parsed.netloc == "youtu.be" and parts:
+                return parts[0]
             if parts:
                 return parts[0]
         if not clean.startswith("@") and not clean.startswith("UC"):
@@ -44,6 +53,8 @@ class YouTubeLiveProvider(BaseStreamProvider):
             live_url = f"https://www.youtube.com/{identifier}/live"
         elif identifier.startswith("UC"):
             live_url = f"https://www.youtube.com/channel/{identifier}/live"
+        elif len(identifier) == 11 and not identifier.startswith("@"):
+            live_url = f"https://www.youtube.com/watch?v={identifier}"
         else:
             live_url = f"https://www.youtube.com/@{identifier}/live"
 
