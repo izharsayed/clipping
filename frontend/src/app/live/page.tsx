@@ -1,7 +1,7 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -598,15 +598,25 @@ export default function LiveDashboardPage() {
                   <div className="p-3 bg-muted rounded-full w-fit mx-auto text-muted-foreground">
                     <Radio className="w-6 h-6" />
                   </div>
-                  <h3 className="font-semibold text-lg">No Clips Yet</h3>
+                  <h3 className="font-semibold text-lg">
+                    {moments.length > 0
+                      ? `No ${filterStatus === "pending" ? "pending" : filterStatus} clips`
+                      : "No Clips Yet"}
+                  </h3>
                   <p className="text-sm text-muted-foreground">
-                    When your monitored streamers go live, the AI engine listens to their audio energy and dialogue to automatically cut and reframe vertical clips.
+                    {moments.length > 0
+                      ? `You have ${moments.length} total clip${moments.length === 1 ? "" : "s"} under other filters.`
+                      : "When your monitored streamers go live, the AI engine listens to their audio energy and dialogue to automatically cut and reframe vertical clips."}
                   </p>
-                  {channels.length === 0 && (
+                  {moments.length > 0 ? (
+                    <Button variant="outline" size="sm" onClick={() => setFilterStatus("all")}>
+                      View All Clips ({moments.length})
+                    </Button>
+                  ) : channels.length === 0 ? (
                     <Button onClick={() => setAddModalOpen(true)} className="gap-2">
                       <Plus className="w-4 h-4" /> Add Your First Streamer
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               </Card>
             ) : (
@@ -656,13 +666,10 @@ export default function LiveDashboardPage() {
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span className="font-medium text-foreground flex items-center gap-1.5">
                               {moment.streamer.avatar_url && (
-                                <Image
+                                <img
                                   src={moment.streamer.avatar_url}
                                   alt={moment.streamer.display_name}
-                                  width={18}
-                                  height={18}
-                                  className="rounded-full"
-                                  unoptimized
+                                  className="w-[18px] h-[18px] rounded-full object-cover"
                                 />
                               )}
                               {moment.streamer.display_name}
@@ -809,13 +816,10 @@ export default function LiveDashboardPage() {
                         <div className="flex items-start justify-between gap-3">
                           <Link href={`/live/${ch.id}`} className="flex items-center gap-3 group/link min-w-0">
                             {ch.avatar_url ? (
-                              <Image
+                              <img
                                 src={ch.avatar_url}
                                 alt={ch.display_name}
-                                width={40}
-                                height={40}
-                                className="rounded-full border border-border group-hover/link:ring-2 ring-primary/40 transition-all"
-                                unoptimized
+                                className="w-10 h-10 rounded-full border border-border group-hover/link:ring-2 ring-primary/40 transition-all object-cover"
                               />
                             ) : (
                               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center font-bold text-primary group-hover/link:ring-2 ring-primary/40 transition-all">
