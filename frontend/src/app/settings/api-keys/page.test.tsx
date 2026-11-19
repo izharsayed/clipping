@@ -116,3 +116,21 @@ it("selects the new key when the clipboard blocks the copy", async () => {
   expect(window.getSelection()?.toString()).toBe("sk_only-once");
   expect(key.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
 });
+
+it("renders tabs and allows switching to Token & API Usage tab", async () => {
+  render(<ApiKeysPage />);
+  expect(screen.getByRole("tab", { name: /API & MCP Keys/i })).toHaveAttribute("data-state", "active");
+  const usageTab = screen.getByRole("tab", { name: /Token & API Usage/i });
+  expect(usageTab).toHaveAttribute("data-state", "inactive");
+  fireEvent.keyDown(usageTab, { key: "Enter" });
+  await waitFor(() => expect(usageTab).toHaveAttribute("data-state", "active"));
+  expect(await screen.findByText("Connected AI Provider")).toBeInTheDocument();
+});
+
+it("activates Token & API Usage tab when url has tab=usage query param", async () => {
+  window.history.replaceState(null, "", "/settings/api-keys?tab=usage");
+  render(<ApiKeysPage />);
+  const usageTab = screen.getByRole("tab", { name: /Token & API Usage/i });
+  expect(usageTab).toHaveAttribute("data-state", "active");
+  expect(await screen.findByText("Connected AI Provider")).toBeInTheDocument();
+});

@@ -114,6 +114,9 @@ class User(Base):
     monitored_channels: Mapped[List["MonitoredChannel"]] = relationship(
         "MonitoredChannel", back_populates="user", cascade="all, delete-orphan"
     )
+    token_usages: Mapped[List["ApiTokenUsage"]] = relationship(
+        "ApiTokenUsage", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class EmailDelivery(Base):
@@ -548,4 +551,43 @@ class LiveClipMoment(Base):
     )
 
     session: Mapped["LiveStreamSession"] = relationship("LiveStreamSession", back_populates="moments")
+
+
+class ApiTokenUsage(Base):
+    __tablename__ = "api_token_usages"
+
+    id: Mapped[str] = mapped_column(
+        String(80), primary_key=True, default=generate_uuid_string
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(255), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    feature: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'0'")
+    )
+    output_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'0'")
+    )
+    total_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sql_text("'0'")
+    )
+    cost_usd: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default=sql_text("'0.0'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_api_token_usages_user_id", "user_id"),
+        Index("idx_api_token_usages_created_at", "created_at"),
+        Index("idx_api_token_usages_provider", "provider"),
+        Index("idx_api_token_usages_feature", "feature"),
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="token_usages")
+
 

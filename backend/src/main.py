@@ -230,6 +230,7 @@ def create_app(
     from .api.routes.mcp_oauth import consent_router as mcp_oauth_consent_router
     from .api.routes.mcp_oauth import internal_router as mcp_oauth_internal_router
     from .api.routes.live import router as live_router
+    from .api.routes.token_usage import router as token_usage_router
 
     app.include_router(media_router)
     app.include_router(feedback_router)
@@ -244,6 +245,7 @@ def create_app(
     app.include_router(mcp_oauth_internal_router)
     app.include_router(mcp_oauth_consent_router)
     app.include_router(live_router)
+    app.include_router(token_usage_router)
 
     @app.get("/")
     def read_root():

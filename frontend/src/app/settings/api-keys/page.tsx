@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { ArrowUpRight, Copy, Check, Trash2, AlertCircle, Plus, KeyRound } from "lucide-react";
+import { ArrowUpRight, Copy, Check, Trash2, AlertCircle, Plus, KeyRound, Activity } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,11 +12,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient, useSession } from "@/lib/auth-client";
 import { useCopyText } from "@/lib/copy-text";
 import { GITHUB_URL } from "@/lib/site";
 import { KeyClientSetup } from "@/components/mcp-setup";
 import { AssistantConnect } from "@/components/assistant-connect";
+import { ApiUsageDashboard } from "@/components/api-usage-dashboard";
 
 const DOCS = [
   { labelKey: "docsMcp", href: `${GITHUB_URL}/blob/main/mcp/README.md` },
@@ -54,12 +56,18 @@ export default function ApiKeysPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [isSendingVerification, setIsSendingVerification] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("keys");
   const emailVerified = session?.user?.emailVerified === true;
 
   useEffect(() => {
-    const verificationError = new URLSearchParams(window.location.search).get("error");
+    const params = new URLSearchParams(window.location.search);
+    const verificationError = params.get("error");
     if (verificationError === "TOKEN_EXPIRED" || verificationError === "INVALID_TOKEN") {
       setError(t("apiKeys.invalidLink"));
+    }
+    const tabParam = params.get("tab");
+    if (tabParam === "usage" || tabParam === "keys") {
+      setActiveTab(tabParam);
     }
   }, [t]);
 
@@ -184,7 +192,7 @@ export default function ApiKeysPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 md:py-10">
+    <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-8 md:py-10">
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold tracking-tight">{t("apiKeys.title")}</h1>
         <p className="mt-2 text-muted-foreground">
@@ -231,59 +239,78 @@ export default function ApiKeysPage() {
         </Alert>
       )}
 
-      <AssistantConnect />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6 grid w-full max-w-sm grid-cols-2">
+          <TabsTrigger value="keys" className="gap-2">
+            <KeyRound className="size-4" />
+            <span>{t("apiKeys.tabKeys")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="usage" className="gap-2">
+            <Activity className="size-4" />
+            <span>{t("apiKeys.tabUsage")}</span>
+          </TabsTrigger>
+        </TabsList>
 
-      <section className="overflow-hidden rounded-xl border bg-card" aria-labelledby="api-keys-title">
-        <div className="flex flex-wrap items-start justify-between gap-3 p-5">
-          <div className="min-w-0">
-            <h2 id="api-keys-title" className="text-sm font-semibold">{t("apiKeys.keysTitle")}</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("apiKeys.keysIntro")}</p>
-          </div>
-          <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!emailVerified}>
-            <Plus className="size-4" />
-            {t("apiKeys.createKey")}
-          </Button>
-        </div>
+        <TabsContent value="keys" className="space-y-6">
+          <AssistantConnect />
 
-        <div className="border-t">
-          {isFetching ? (
-            <div className="p-5"><Skeleton className="h-12 w-full" /></div>
-          ) : keys.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("apiKeys.empty")}</p>
-          ) : (
-            <ul className="divide-y">
-              {keys.map((key) => (
-                <li key={key.id} className="flex items-center gap-3 px-5 py-3.5">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
-                    <KeyRound className="size-3.5" aria-hidden />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">{key.name}</span>
-                      <code className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">{key.key_prefix}…</code>
-                      {key.revoked && <Badge variant="secondary">{t("apiKeys.revoked")}</Badge>}
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {t("apiKeys.meta", { created: formatDate(key.created_at), used: formatDate(key.last_used_at) })}
-                    </p>
-                  </div>
-                  {!key.revoked && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400"
-                      onClick={() => handleRevoke(key.id)}
-                    >
-                      <Trash2 className="size-3.5" />
-                      <span className="sr-only sm:not-sr-only">{t("apiKeys.revoke")}</span>
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+          <section className="overflow-hidden rounded-xl border bg-card" aria-labelledby="api-keys-title">
+            <div className="flex flex-wrap items-start justify-between gap-3 p-5">
+              <div className="min-w-0">
+                <h2 id="api-keys-title" className="text-sm font-semibold">{t("apiKeys.keysTitle")}</h2>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("apiKeys.keysIntro")}</p>
+              </div>
+              <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!emailVerified}>
+                <Plus className="size-4" />
+                {t("apiKeys.createKey")}
+              </Button>
+            </div>
+
+            <div className="border-t">
+              {isFetching ? (
+                <div className="p-5"><Skeleton className="h-12 w-full" /></div>
+              ) : keys.length === 0 ? (
+                <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("apiKeys.empty")}</p>
+              ) : (
+                <ul className="divide-y">
+                  {keys.map((key) => (
+                    <li key={key.id} className="flex items-center gap-3 px-5 py-3.5">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
+                        <KeyRound className="size-3.5" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">{key.name}</span>
+                          <code className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">{key.key_prefix}…</code>
+                          {key.revoked && <Badge variant="secondary">{t("apiKeys.revoked")}</Badge>}
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {t("apiKeys.meta", { created: formatDate(key.created_at), used: formatDate(key.last_used_at) })}
+                        </p>
+                      </div>
+                      {!key.revoked && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400"
+                          onClick={() => handleRevoke(key.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          <span className="sr-only sm:not-sr-only">{t("apiKeys.revoke")}</span>
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="usage" className="space-y-6">
+          <ApiUsageDashboard />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={createOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent className="sm:max-w-lg">

@@ -112,6 +112,7 @@ model User {
   social_oauth_states SocialOauthState[]
   social_posts        SocialPost[]
   monitored_channels  MonitoredChannel[]
+  token_usages        ApiTokenUsage[]
 
   @@map("users")
   feature_tours UserFeatureTour[]
@@ -584,3 +585,25 @@ model LiveClipMoment {
   @@index([status, created_at], map: "idx_live_clip_moments_status")
   @@map("live_clip_moments")
 }
+
+model ApiTokenUsage {
+  id           String   @id @default(uuid()) @db.VarChar(80)
+  user_id      String   @db.VarChar(255)
+  provider     String   @db.VarChar(50)
+  model        String   @db.VarChar(100)
+  feature      String   @db.VarChar(50)
+  input_tokens  Int      @default(0)
+  output_tokens Int      @default(0)
+  total_tokens Int      @default(0)
+  cost_usd     Float    @default(0.0) @db.Real
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_api_token_usages_user_id")
+  @@index([created_at], map: "idx_api_token_usages_created_at")
+  @@index([provider], map: "idx_api_token_usages_provider")
+  @@index([feature], map: "idx_api_token_usages_feature")
+  @@map("api_token_usages")
+}
+

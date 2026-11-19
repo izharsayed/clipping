@@ -1179,6 +1179,11 @@ async def _run_transcript_analysis(
             for attempt in range(1, TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS + 1):
                 try:
                     result = await agent.run(prompt)
+                    try:
+                        from .services.token_tracker import track_agent_run
+                        track_agent_run(result, feature="clipping")
+                    except Exception:
+                        pass
                     if hasattr(result, "response"):
                         logger.info("AI analysis completed using model %s", result.response.model_name)
                     return result

@@ -99,6 +99,8 @@
   },
   "apiKeys": {
     "title": "Agen & API",
+    "tabKeys": "Kunci API & MCP",
+    "tabUsage": "Penggunaan Token & API",
     "intro": "Biarkan Claude, Cursor, dan agen AI lain membuat clip untukmu lewat <brand>server MCP SupoClip</brand>, atau panggil REST API dari kodemu sendiri. Perlakukan kunci seperti kata sandi; kunci memberi akses penuh ke akunmu.",
     "docsMcp": "Dokumentasi MCP",
     "docsRest": "Dokumentasi REST API",

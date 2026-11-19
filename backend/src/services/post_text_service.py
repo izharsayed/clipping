@@ -166,6 +166,11 @@ async def generate_post_text_with_ai(
 
     try:
         result = await asyncio.wait_for(agent.run(prompt), timeout=45)
+        try:
+            from .token_tracker import track_agent_run
+            track_agent_run(result, feature="post_text")
+        except Exception:
+            pass
         raw = result.output.model_dump()
         return tidy_post_text(raw, fallback_title=clip_title or "", text=clip_text)
     except Exception as exc:

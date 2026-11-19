@@ -56,6 +56,11 @@ async def process_video_task(
 
     set_trace_id(f"task-{task_id}")
     set_user_id(user_id)
+    try:
+        from ..services.token_tracker import set_current_user_id
+        set_current_user_id(user_id)
+    except Exception:
+        pass
     logger.info(f"Worker processing task {task_id}")
 
     from ..font_registry import fetch_user_font

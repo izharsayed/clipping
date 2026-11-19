@@ -99,6 +99,8 @@
   },
   "apiKeys": {
     "title": "Agents & API",
+    "tabKeys": "API & MCP Keys",
+    "tabUsage": "Token & API Usage",
     "intro": "Let Claude, Cursor and other AI agents clip videos for you through the <brand>SupoClip MCP server</brand>, or call the REST API from your own code. Treat keys like passwords; they grant full access to your account.",
     "docsMcp": "MCP docs",
     "docsRest": "REST API docs",

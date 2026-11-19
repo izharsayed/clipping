@@ -6,6 +6,7 @@ Add a line here when a pull request changes something a user can see. Use **New*
 
 ## 2026-11-19
 
+- **New:** Track your connected AI model token consumption and estimated spending under Settings → Agents & API in the new Token & API Usage tab. View real-time prompt and completion token counts across video clipping, PeakCut Post Text, and live moment classification, with interactive 7-day, 30-day, and 90-day volume charts, feature breakdown percentages, and a full audit log of recent AI completions. ([#452](https://github.com/FujiwaraChoki/supoclip/pull/452))
 - **New:** The autonomous Live AI Clipping Engine continuously monitors your favourite streamer channels on Twitch, Kick, and YouTube Live, captures live broadcasts into a low-overhead rolling circular buffer, automatically detects viral and high-energy moments using speech transcription and audio energy analysis, renders ready-to-share 9:16 vertical clips with active speaker framing and animated subtitles, and serves them directly into your new Live dashboard for instant approval, download, or social publishing. ([#450](https://github.com/FujiwaraChoki/supoclip/pull/450))
 
 ## 2026-11-18

@@ -5,19 +5,15 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   AlertCircle,
-  Bot,
   Check,
   Clock,
   Copy,
   Download,
   ExternalLink,
   Flame,
-  Layers,
-  Play,
   Plus,
   Radio,
   RefreshCw,
-  Sliders,
   Sparkles,
   Trash2,
   Tv,
@@ -49,7 +45,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type MonitoredChannel = {
   id: string;

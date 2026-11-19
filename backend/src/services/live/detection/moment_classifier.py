@@ -100,6 +100,11 @@ class MomentClassifier:
 
         try:
             result = await agent.run(prompt)
+            try:
+                from ...token_tracker import track_agent_run
+                track_agent_run(result, feature="live_moment")
+            except Exception:
+                pass
             return result.output
         except Exception as exc:
             logger.warning("Moment classification failed: %s; falling back to heuristic", exc)

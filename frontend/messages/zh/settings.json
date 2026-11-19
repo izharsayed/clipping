@@ -99,6 +99,8 @@
   },
   "apiKeys": {
     "title": "智能体与 API",
+    "tabKeys": "API 与 MCP 密钥",
+    "tabUsage": "Token 与 API 用量",
     "intro": "让 Claude、Cursor 和其他 AI 智能体通过 <brand>SupoClip MCP 服务器</brand>帮你剪视频，或者在你自己的代码里调用 REST API。密钥和密码一样：它们可以完全访问你的账号。",
     "docsMcp": "MCP 文档",
     "docsRest": "REST API 文档",

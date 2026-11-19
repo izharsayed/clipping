@@ -549,7 +549,6 @@ interface Walk {
 }
 
 // Characters XML will not carry.
-// eslint-disable-next-line no-control-regex
 const INVALID = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
 const escapeText = (s: string) => (/[&<>\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/.test(s) ? s.replace(INVALID, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : s);
 const escapeAttribute = (s: string) =>

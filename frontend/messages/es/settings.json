@@ -99,6 +99,8 @@
   },
   "apiKeys": {
     "title": "Agentes y API",
+    "tabKeys": "Claves API y MCP",
+    "tabUsage": "Uso de API y tokens",
     "intro": "Deja que Claude, Cursor y otros agentes de IA recorten videos por ti con el <brand>servidor MCP de SupoClip</brand>, o llama a la API REST desde tu código. Trata las claves como contraseñas: dan acceso total a tu cuenta.",
     "docsMcp": "Docs de MCP",
     "docsRest": "Docs de la API REST",
