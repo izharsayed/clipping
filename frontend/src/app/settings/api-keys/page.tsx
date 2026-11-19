@@ -243,11 +243,11 @@ export default function ApiKeysPage() {
         <TabsList className="mb-6 grid w-full max-w-sm grid-cols-2">
           <TabsTrigger value="keys" className="gap-2">
             <KeyRound className="size-4" />
-            <span>{t("apiKeys.tabKeys")}</span>
+            <span>{t.has("apiKeys.tabKeys") ? t("apiKeys.tabKeys") : "API & MCP Keys"}</span>
           </TabsTrigger>
           <TabsTrigger value="usage" className="gap-2">
             <Activity className="size-4" />
-            <span>{t("apiKeys.tabUsage")}</span>
+            <span>{t.has("apiKeys.tabUsage") ? t("apiKeys.tabUsage") : "Token & API Usage"}</span>
           </TabsTrigger>
         </TabsList>
 
