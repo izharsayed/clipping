@@ -28,6 +28,16 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "**.jtvnw.net" },
+      { protocol: "https", hostname: "**.kick.com" },
+      { protocol: "https", hostname: "**.googleusercontent.com" },
+      { protocol: "https", hostname: "**.ggpht.com" },
+      { protocol: "https", hostname: "**.ytimg.com" },
+      { protocol: "https", hostname: "**.twimg.com" },
+    ],
+  },
   async rewrites() {
     return [
       {
