@@ -13,6 +13,8 @@ from .moment_classifier import MomentClassifier, MomentClassification
 from ..capture.rolling_buffer import RollingBuffer, SegmentInfo
 from ....database import AsyncSessionLocal
 from ....models import MonitoredChannel, LiveStreamSession, LiveClipMoment
+from ....media.ffmpeg import ffprobe_duration
+from ....utils.async_helpers import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -94,21 +96,28 @@ class LiveMomentOrchestrator:
                     logger.info("Session %s reached max clips cap (%d)", session.id, channel.max_clips_per_stream)
                     return
 
-                # Desired clip duration: default 30-40s centered around the spike
-                clip_duration = float(channel.min_clip_duration or 30)
-                start_seconds = max(0.0, segment.start_time - (clip_duration * 0.65))
-                end_seconds = segment.start_time + segment.duration + (clip_duration * 0.35)
+                # 1. Determine candidate window from channel configuration
+                min_duration = float(channel.min_clip_duration or 20)
+                max_duration = float(channel.max_clip_duration or 60)
+                if min_duration > max_duration:
+                    min_duration, max_duration = max_duration, min_duration
+
+                # Segment ends at current stream time
+                current_end = segment.start_time + segment.duration
+                # Extract candidate context up to max_clip_duration (default 60s) for AI transcription
+                candidate_context_sec = min(max_duration, 60.0)
+                candidate_start = max(0.0, current_end - candidate_context_sec)
 
                 slice_id = uuid4().hex[:8]
                 temp_slice_path = self.buffer.buffer_dir / f"slice_{slice_id}.mp4"
 
-                # 1. Extract raw window from rolling buffer
+                # Extract raw candidate window from rolling buffer (bounded to existing history)
                 await self.buffer.extract_window(
-                    start_seconds=start_seconds,
-                    end_seconds=end_seconds,
+                    start_seconds=candidate_start,
+                    end_seconds=current_end,
                     output_path=temp_slice_path,
-                    pre_roll_seconds=2.0,
-                    post_roll_seconds=3.0,
+                    pre_roll_seconds=0.0,
+                    post_roll_seconds=0.0,
                 )
 
                 if not temp_slice_path.exists():
@@ -128,11 +137,12 @@ class LiveMomentOrchestrator:
                 )
 
                 logger.info(
-                    "AI evaluation for %s: clip_worthy=%s, category=%s, score=%.2f, title='%s'",
+                    "AI evaluation for %s: clip_worthy=%s, category=%s, score=%.2f, suggested_duration=%ss, title='%s'",
                     channel.display_name,
                     classification.is_clip_worthy,
                     classification.category,
                     classification.confidence_score,
+                    classification.suggested_duration_seconds,
                     classification.title,
                 )
 
@@ -140,11 +150,67 @@ class LiveMomentOrchestrator:
                     temp_slice_path.unlink(missing_ok=True)
                     return
 
-                # 4. Save LiveClipMoment record
+                # 4. Determine final target clip duration dynamically based on AI recommendation and channel boundaries
+                suggested_sec = getattr(classification, "suggested_duration_seconds", None)
+                if suggested_sec is None or suggested_sec <= 0:
+                    target_duration = min(max_duration, max(min_duration, 40.0))
+                else:
+                    target_duration = min(max_duration, max(min_duration, float(suggested_sec)))
+
+                # Check actual extracted slice duration
+                actual_slice_dur = await run_in_thread(ffprobe_duration, temp_slice_path)
+                if actual_slice_dur > target_duration + 1.5:
+                    trim_offset = max(0.0, actual_slice_dur - target_duration)
+                    trimmed_slice_path = self.buffer.buffer_dir / f"slice_trim_{slice_id}.mp4"
+                    trim_cmd = [
+                        "ffmpeg",
+                        "-y",
+                        "-ss",
+                        str(round(trim_offset, 3)),
+                        "-i",
+                        str(temp_slice_path),
+                        "-t",
+                        str(round(target_duration, 3)),
+                        "-c",
+                        "copy",
+                        "-movflags",
+                        "+faststart",
+                        str(trimmed_slice_path),
+                    ]
+                    proc = await asyncio.create_subprocess_exec(
+                        *trim_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    if proc.returncode == 0 and trimmed_slice_path.exists():
+                        temp_slice_path.unlink(missing_ok=True)
+                        temp_slice_path = trimmed_slice_path
+
+                        # Re-align transcript word timestamps to trimmed start
+                        adjusted_words = []
+                        for w in transcript_data.get("words", []):
+                            w_start = w.get("start", 0.0)
+                            w_end = w.get("end", 0.0)
+                            if w_end > trim_offset and w_start < actual_slice_dur:
+                                adjusted_words.append({
+                                    **w,
+                                    "start": max(0.0, round(w_start - trim_offset, 3)),
+                                    "end": max(0.0, round(w_end - trim_offset, 3)),
+                                })
+                        transcript_data["words"] = adjusted_words
+                        if adjusted_words:
+                            transcript_data["text"] = " ".join(w.get("word", "") for w in adjusted_words)
+                            transcript_text = transcript_data["text"]
+
+                final_start_seconds = max(0.0, current_end - target_duration)
+                final_end_seconds = current_end
+
+                # 5. Save LiveClipMoment record
                 moment = LiveClipMoment(
                     session_id=session.id,
-                    start_seconds=round(start_seconds, 2),
-                    end_seconds=round(end_seconds, 2),
+                    start_seconds=round(final_start_seconds, 2),
+                    end_seconds=round(final_end_seconds, 2),
                     category=classification.category,
                     confidence_score=round(classification.confidence_score, 2),
                     audio_energy_score=round(energy.spike_ratio, 2),

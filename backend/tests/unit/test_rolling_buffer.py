@@ -73,6 +73,44 @@ async def test_rolling_buffer_extract_window(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_rolling_buffer_dynamic_duration_bounds(tmp_path: Path):
+    """Verify that extract_window never projects into the future and preserves requested duration."""
+    buffer = RollingBuffer(buffer_dir=tmp_path, max_duration_seconds=90.0)
+
+    # Register 12 segments of 5s each (total 60.0s recorded, timestamps 0.0 to 60.0)
+    for i in range(12):
+        f = tmp_path / f"seg_{i:05d}.ts"
+        f.write_bytes(b"stream_segment_data")
+        await buffer.register_segment(f, duration=5.0)
+
+    output_clip = tmp_path / "dynamic_clip.mp4"
+    captured_cmd = []
+
+    mock_proc = AsyncMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate.return_value = (b"", b"")
+
+    def capture_subprocess(*args, **kwargs):
+        captured_cmd.extend(args)
+        output_clip.write_bytes(b"dynamic_clip_output")
+        return mock_proc
+
+    with patch("asyncio.create_subprocess_exec", side_effect=capture_subprocess):
+        # Request 45.0s ending at current stream time (60.0s)
+        await buffer.extract_window(
+            start_seconds=15.0,
+            end_seconds=60.0,
+            output_path=output_clip,
+            pre_roll_seconds=0.0,
+            post_roll_seconds=0.0,
+        )
+        assert output_clip.exists()
+        # Ensure -t argument in ffmpeg command is 45.0 (not truncated to 20.0!)
+        t_index = captured_cmd.index("-t")
+        assert captured_cmd[t_index + 1] == "45.0"
+
+
+@pytest.mark.asyncio
 async def test_capture_manager_lifecycle(tmp_path: Path):
     manager = LiveCaptureManager.get_instance()
     manager.base_buffer_dir = tmp_path

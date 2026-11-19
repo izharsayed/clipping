@@ -12,6 +12,7 @@ from ...services.live.models import (
     ChannelCreateRequest,
     ChannelUpdateRequest,
     LiveOverviewStats,
+    ClipNowRequest,
 )
 from ...services.live.channel_service import LiveChannelService
 from ...services.live.monitoring_service import LiveMonitoringService
@@ -154,6 +155,7 @@ async def check_channel_now(
 async def clip_channel_now(
     channel_id: str,
     request: Request,
+    payload: Optional[ClipNowRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Manually trigger an instant clip from the live stream buffer."""
@@ -204,42 +206,55 @@ async def clip_channel_now(
         await db.commit()
         await db.refresh(session)
 
+    # Determine desired clip duration from payload or channel defaults
+    min_d = float(ch.min_clip_duration or 20)
+    max_d = float(ch.max_clip_duration or 60)
+    if min_d > max_d:
+        min_d, max_d = max_d, min_d
+
+    if payload and payload.duration is not None and payload.duration > 0:
+        duration = min(max_d, max(min_d, float(payload.duration)))
+    else:
+        duration = min(max_d, max(min_d, 40.0))
+
     # Check rolling buffer in LiveCaptureManager
     manager = LiveCaptureManager.get_instance()
     buffer = manager.get_buffer(ch.id)
     raw_slice_path = None
+    clip_start = 0.0
+    clip_end = duration
 
     if buffer and buffer.segments:
         now_ts = datetime.utcnow().timestamp()
-        duration = min(float(ch.max_clip_duration), max(float(ch.min_clip_duration), 30.0))
         slice_output = buffer.buffer_dir / f"manual_slice_{int(now_ts)}.mp4"
         try:
             total_elapsed = buffer._elapsed_time
+            clip_start = max(0.0, total_elapsed - duration)
+            clip_end = total_elapsed
             raw_slice_path = await buffer.extract_window(
-                start_seconds=max(0.0, total_elapsed - duration),
-                end_seconds=total_elapsed,
+                start_seconds=clip_start,
+                end_seconds=clip_end,
                 output_path=slice_output,
-                pre_roll_seconds=3.0,
-                post_roll_seconds=2.0,
+                pre_roll_seconds=0.0,
+                post_roll_seconds=0.0,
             )
         except Exception as exc:
             logger.warning("Could not extract from buffer for channel %s: %s", ch.id, exc)
 
     classification = MomentClassification(
-        is_moment=True,
+        is_clip_worthy=True,
         category="highlight",
         confidence_score=0.96,
-        audio_energy=0.88,
         title=f"UNBELIEVABLE MOMENT BY {ch.display_name.upper()}",
         description=f"High-energy moment captured live on {ch.display_name}'s broadcast",
-        hook_suggestion=f"LOOK AT WHAT {ch.display_name.upper()} JUST DID",
         reason="Instant Clip triggered from Live Streamer Studio",
-        suggested_start_offset=0.0,
-        suggested_end_offset=30.0,
+        suggested_duration_seconds=int(duration),
     )
 
     moment = LiveClipMoment(
         session_id=session.id,
+        start_seconds=round(clip_start, 2),
+        end_seconds=round(clip_end, 2),
         category="highlight",
         confidence_score=0.96,
         audio_energy_score=0.88,

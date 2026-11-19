@@ -15,6 +15,7 @@ class MomentClassification(BaseModel):
     """Structured AI evaluation of a candidate live stream moment."""
 
     is_clip_worthy: bool = Field(
+        default=True,
         description="True if this is a genuine entertaining, funny, or viral moment worth publishing."
     )
     category: Literal[
@@ -24,7 +25,8 @@ class MomentClassification(BaseModel):
         "conversation",
         "unexpected",
         "emotional",
-    ] = Field(default="funny", description="Primary category of the event.")
+        "highlight",
+    ] = Field(default="highlight", description="Primary category of the event.")
     confidence_score: float = Field(
         default=0.8, ge=0.0, le=1.0, description="Confidence score from 0.0 to 1.0."
     )
@@ -38,7 +40,7 @@ class MomentClassification(BaseModel):
         default="", description="Why this moment was selected (context, humor, reaction, game clutch)."
     )
     suggested_duration_seconds: int = Field(
-        default=30, ge=15, le=60, description="Recommended clip duration in seconds."
+        default=35, ge=15, le=60, description="Recommended clip duration in seconds."
     )
 
 
@@ -61,7 +63,10 @@ class MomentClassifier:
                 "- High-energy gaming clutches, aces, or dramatic wins/losses.\n"
                 "- Engaging conversational punchlines or storytelling hooks.\n"
                 "Reject mundane background noise, coughing, mic bumps, or boring banter even if audio volume was loud. "
-                "Be selective: only return is_clip_worthy=True if viewers would watch till the end."
+                "Be selective: only return is_clip_worthy=True if viewers would watch till the end.\n"
+                "Determine suggested_duration_seconds (between 20 and 60 seconds) to capture the complete buildup "
+                "and climax without abrupt cutoffs. For quick punchlines use 25-35s; for storytelling, conversational "
+                "banter, or game clutch buildup use 40-60s."
             )
             self._agent = Agent(
                 model=model,

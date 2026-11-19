@@ -57,3 +57,9 @@ class LiveOverviewStats(BaseModel):
     total_clips_count: int = 0
     clips_awaiting_approval: int = 0
     processing_errors_count: int = 0
+
+
+class ClipNowRequest(BaseModel):
+    """Payload to trigger an instant manual clip with optional custom duration."""
+
+    duration: Optional[float] = None

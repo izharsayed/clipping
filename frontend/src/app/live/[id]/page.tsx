@@ -116,6 +116,7 @@ export default function StreamerPreviewPage() {
   const [loading, setLoading] = useState(true);
   const [checkingLive, setCheckingLive] = useState(false);
   const [clippingNow, setClippingNow] = useState(false);
+  const [selectedDuration, setSelectedDuration] = useState<number>(45);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [hostname, setHostname] = useState<string>("localhost");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -174,15 +175,18 @@ export default function StreamerPreviewPage() {
     }
   };
 
-  const handleClipNow = async () => {
+  const handleClipNow = async (customDuration?: number) => {
     setClippingNow(true);
+    const dur = customDuration || selectedDuration;
     try {
       const res = await fetch(`/api/live/channels/${channelId}/clip-now`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ duration: dur }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(data.message || "Instant clip captured! Processing in background.");
+        toast.success(data.message || `Instant ${dur}s clip captured! Processing in background.`);
         await loadData();
       } else {
         toast.error(data.message || "Could not trigger instant clip");
@@ -401,15 +405,34 @@ export default function StreamerPreviewPage() {
               </a>
             </Button>
 
-            {/* Instant Manual Clip Trigger */}
+            {/* Instant Manual Clip Duration Selector & Trigger */}
+            <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/50">
+              {[20, 30, 45, 60].map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  onClick={() => setSelectedDuration(sec)}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded-md transition-all ${
+                    selectedDuration === sec
+                      ? "bg-amber-500 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title={`Set manual clip length to ${sec}s`}
+                >
+                  {sec}s
+                </button>
+              ))}
+            </div>
+
             <Button
               size="sm"
-              onClick={handleClipNow}
+              onClick={() => handleClipNow()}
               disabled={clippingNow}
               className="gap-2 text-xs font-semibold h-8 bg-gradient-to-r from-amber-500 to-primary hover:from-amber-600 hover:to-primary/90 text-white shadow-sm"
+              title={`Clip past ${selectedDuration} seconds from live stream`}
             >
               <Zap className={`size-3.5 ${clippingNow ? "animate-spin" : ""}`} />
-              <span>{clippingNow ? "Clipping..." : "⚡ Clip This Now"}</span>
+              <span>{clippingNow ? "Clipping..." : `⚡ Clip This Now (${selectedDuration}s)`}</span>
             </Button>
           </div>
         </div>
@@ -557,6 +580,9 @@ export default function StreamerPreviewPage() {
                     </span>
                     <span className="font-bold text-foreground">
                       {channel.min_clip_duration}s – {channel.max_clip_duration}s
+                    </span>
+                    <span className="text-[10px] text-primary block mt-0.5 font-medium">
+                      AI Dynamic & Configurable
                     </span>
                   </div>
 

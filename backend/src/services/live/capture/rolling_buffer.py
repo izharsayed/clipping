@@ -111,20 +111,27 @@ class RollingBuffer:
         start_seconds: float,
         end_seconds: float,
         output_path: Path,
-        pre_roll_seconds: float = 5.0,
-        post_roll_seconds: float = 5.0,
+        pre_roll_seconds: float = 0.0,
+        post_roll_seconds: float = 0.0,
     ) -> Path:
         """
         Extract a continuous video window from the buffered segments.
-        Includes pre-roll and post-roll context for clean cuts.
+        Guarantees that boundaries are clamped to available buffer history
+        so future non-existent timestamps never cause clip truncation.
         """
         async with self._lock:
-            target_start = max(0.0, start_seconds - pre_roll_seconds)
-            target_end = end_seconds + post_roll_seconds
-            target_duration = target_end - target_start
-
             if not self.segments:
                 raise RuntimeError("Cannot extract clip: Rolling buffer is empty")
+
+            buffer_start = self.segments[0].start_time
+            buffer_end = self.segments[-1].start_time + self.segments[-1].duration
+            requested_duration = max(5.0, end_seconds - start_seconds)
+
+            # In a live stream, target_end cannot exceed the latest recorded segment:
+            target_end = min(end_seconds + post_roll_seconds, buffer_end)
+            # Pull start backwards from target_end so full duration is retained from history:
+            target_start = max(buffer_start, target_end - requested_duration - pre_roll_seconds)
+            target_duration = max(1.0, target_end - target_start)
 
             # Find all segments that overlap with [target_start, target_end]
             matching_segments: List[SegmentInfo] = []
