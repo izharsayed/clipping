@@ -430,3 +430,35 @@ async def reject_moment(
     await db.commit()
     return {"id": moment.id, "status": moment.status}
 
+
+@router.delete("/moments/{moment_id}")
+async def delete_moment(
+    moment_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a moment record and any associated generated clip."""
+    user_id = await _user_id(request, db)
+    from sqlalchemy import select
+    from ...models import MonitoredChannel, LiveStreamSession, LiveClipMoment, GeneratedClip
+
+    stmt = (
+        select(LiveClipMoment)
+        .join(LiveStreamSession, LiveClipMoment.session_id == LiveStreamSession.id)
+        .join(MonitoredChannel, LiveStreamSession.channel_id == MonitoredChannel.id)
+        .where(LiveClipMoment.id == moment_id, MonitoredChannel.user_id == user_id)
+    )
+    moment = (await db.execute(stmt)).scalar_one_or_none()
+    if not moment:
+        raise HTTPException(status_code=404, detail="Moment not found")
+
+    if moment.clip_id:
+        clip_stmt = select(GeneratedClip).where(GeneratedClip.id == moment.clip_id)
+        clip = (await db.execute(clip_stmt)).scalar_one_or_none()
+        if clip:
+            await db.delete(clip)
+
+    await db.delete(moment)
+    await db.commit()
+    return {"success": True, "id": moment_id}
+

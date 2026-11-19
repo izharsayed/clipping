@@ -97,109 +97,120 @@ class LivePipelineBridge:
         4. Saves to PostgreSQL generated_clips
         5. Updates LiveClipMoment
         """
-        task = await self.get_or_create_session_task(channel, session)
-        clips_output_dir = Path(self.config.temp_dir) / "clips"
-        clips_output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            task = await self.get_or_create_session_task(channel, session)
+            clips_output_dir = Path(self.config.temp_dir) / "clips"
+            clips_output_dir.mkdir(parents=True, exist_ok=True)
 
-        clip_id = str(uuid4())
-        final_clip_filename = f"live_{clip_id[:12]}.mp4"
-        final_clip_path = clips_output_dir / final_clip_filename
+            clip_id = str(uuid4())
+            final_clip_filename = f"live_{clip_id[:12]}.mp4"
+            final_clip_path = clips_output_dir / final_clip_filename
 
-        raw_duration = await run_in_thread(ffprobe_duration, raw_slice_path)
-        if raw_duration <= 1.0:
-            logger.warning("Raw slice duration too short: %.2f", raw_duration)
-            return None
+            raw_duration = await run_in_thread(ffprobe_duration, raw_slice_path)
+            if raw_duration <= 1.0:
+                logger.warning("Raw slice duration too short: %.2f", raw_duration)
+                moment.status = "failed"
+                await self.db.commit()
+                return None
 
-        # 1. Cache word timings sidecar so captions engine can read it
-        if transcript_data.get("words"):
-            await run_in_thread(cache_transcript_data, raw_slice_path, transcript_data)
+            # 1. Cache word timings sidecar so captions engine can read it
+            if transcript_data.get("words"):
+                await run_in_thread(cache_transcript_data, raw_slice_path, transcript_data)
 
-        # 2. Generate PeakCut Post Text with AI
-        transcript_text = transcript_data.get("text") or classification.description
-        post_text_dict = await generate_post_text_with_ai(
-            clip_text=transcript_text,
-            clip_title=classification.title,
-            source_title=session.title or channel.display_name,
-        )
-
-        hook_text = post_text_dict.get("hook") or "CHECK THIS OUT"
-
-        # 3. Render 9:16 vertical video using existing SupoClip video_utils
-        logger.info(
-            "Rendering live moment clip: %s (duration: %.1fs, hook: %s)",
-            final_clip_filename,
-            raw_duration,
-            hook_text,
-        )
-
-        def do_render():
-            return create_optimized_clip(
-                video_path=raw_slice_path,
-                start_time=0.0,
-                end_time=raw_duration,
-                output_path=final_clip_path,
-                add_subtitles=True,
-                output_format="vertical",
-                hook_title=hook_text,
-                extend_to_sentence=True,
+            # 2. Generate PeakCut Post Text with AI
+            transcript_text = transcript_data.get("text") or classification.description
+            post_text_dict = await generate_post_text_with_ai(
+                clip_text=transcript_text,
+                clip_title=classification.title,
+                source_title=session.title or channel.display_name,
             )
 
-        rendered_success = await run_in_thread(do_render)
-        if not rendered_success or not final_clip_path.exists():
-            logger.error("Failed to render vertical clip for moment %s", moment.id)
-            moment.status = "failed"
+            hook_text = post_text_dict.get("hook") or "CHECK THIS OUT"
+
+            # 3. Render 9:16 vertical video using existing SupoClip video_utils
+            logger.info(
+                "Rendering live moment clip: %s (duration: %.1fs, hook: %s)",
+                final_clip_filename,
+                raw_duration,
+                hook_text,
+            )
+
+            def do_render():
+                return create_optimized_clip(
+                    video_path=raw_slice_path,
+                    start_time=0.0,
+                    end_time=raw_duration,
+                    output_path=final_clip_path,
+                    add_subtitles=True,
+                    output_format="vertical",
+                    hook_title=hook_text,
+                    extend_to_sentence=True,
+                )
+
+            rendered_success = await run_in_thread(do_render)
+            if not rendered_success or not final_clip_path.exists():
+                logger.error("Failed to render vertical clip for moment %s", moment.id)
+                moment.status = "failed"
+                await self.db.commit()
+                return None
+
+            final_duration = await run_in_thread(ffprobe_duration, final_clip_path)
+
+            # 4. Insert into generated_clips table
+            clip_order = session.clips_count + 1
+            virality_score = int(classification.confidence_score * 100)
+
+            workflow_meta = {
+                "post_text": post_text_dict,
+                "category": classification.category,
+                "live_session_id": session.id,
+                "channel_id": channel.id,
+                "platform": channel.platform,
+            }
+
+            created_clip_id = await ClipRepository.create_clip(
+                db=self.db,
+                task_id=task.id,
+                filename=final_clip_filename,
+                file_path=str(final_clip_path),
+                start_time="00:00",
+                end_time=f"00:{int(final_duration):02d}",
+                duration=round(final_duration, 2),
+                text=transcript_text,
+                relevance_score=round(classification.confidence_score, 2),
+                reasoning=classification.reason,
+                clip_order=clip_order,
+                virality_score=virality_score,
+                hook_score=min(25, int(virality_score * 0.25)),
+                engagement_score=min(25, int(virality_score * 0.25)),
+                value_score=min(25, int(virality_score * 0.25)),
+                shareability_score=min(25, int(virality_score * 0.25)),
+                hook_type=classification.category,
+                hook_title=hook_text,
+                clip_id=clip_id,
+                workflow_role="highlight",
+                workflow_meta=workflow_meta,
+            )
+
+            # 5. Update LiveClipMoment
+            moment.task_id = task.id
+            moment.clip_id = created_clip_id
+            moment.status = "pending"  # Ready for user approval
+            session.clips_count += 1
+
             await self.db.commit()
+            logger.info(
+                "Live clip created successfully: %s (id=%s) for streamer %s",
+                final_clip_filename,
+                created_clip_id,
+                channel.display_name,
+            )
+            return created_clip_id
+        except Exception as exc:
+            logger.exception("Failed rendering live moment %s to clip: %s", getattr(moment, "id", None), exc)
+            try:
+                moment.status = "failed"
+                await self.db.commit()
+            except Exception:
+                pass
             return None
-
-        final_duration = await run_in_thread(ffprobe_duration, final_clip_path)
-
-        # 4. Insert into generated_clips table
-        clip_order = session.clips_count + 1
-        virality_score = int(classification.confidence_score * 100)
-
-        workflow_meta = {
-            "post_text": post_text_dict,
-            "category": classification.category,
-            "live_session_id": session.id,
-            "channel_id": channel.id,
-            "platform": channel.platform,
-        }
-
-        created_clip_id = await ClipRepository.create_clip(
-            db=self.db,
-            task_id=task.id,
-            filename=final_clip_filename,
-            file_path=str(final_clip_path),
-            start_time="00:00",
-            end_time=f"00:{int(final_duration):02d}",
-            duration=round(final_duration, 2),
-            text=transcript_text,
-            relevance_score=round(classification.confidence_score, 2),
-            reasoning=classification.reason,
-            clip_order=clip_order,
-            virality_score=virality_score,
-            hook_score=min(25, int(virality_score * 0.25)),
-            engagement_score=min(25, int(virality_score * 0.25)),
-            value_score=min(25, int(virality_score * 0.25)),
-            shareability_score=min(25, int(virality_score * 0.25)),
-            hook_type=classification.category,
-            hook_title=hook_text,
-            clip_id=clip_id,
-            workflow_role="highlight",
-            workflow_meta=workflow_meta,
-        )
-
-        # 5. Update LiveClipMoment
-        moment.task_id = task.id
-        moment.clip_id = created_clip_id
-        moment.status = "pending"  # Ready for user approval
-        session.clips_count += 1
-
-        await self.db.commit()
-        logger.info(
-            "Live clip created successfully: %s (id=%s) for streamer %s",
-            final_clip_filename,
-            created_clip_id,
-            channel.display_name,
-        )
-        return created_clip_id

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Check,
   Clock,
@@ -16,9 +17,9 @@ import {
   Radio,
   RefreshCw,
   Sparkles,
+  Trash2,
   Tv,
   Volume2,
-  Video,
   X,
   Zap,
 } from "lucide-react";
@@ -224,6 +225,28 @@ export default function StreamerPreviewPage() {
     } catch {
       toast.error("Failed to reject moment");
     }
+  };
+
+  const handleDeleteMoment = async (momentId: string) => {
+    try {
+      const res = await fetch(`/api/live/moments/${momentId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Moment removed");
+        setMoments((prev) => prev.filter((m) => m.id !== momentId));
+      } else {
+        toast.error("Failed to delete moment");
+      }
+    } catch {
+      toast.error("Error deleting moment");
+    }
+  };
+
+  const isActivelyRendering = (m: MomentClip) => {
+    if (m.clip_id || m.clip?.id) return false;
+    if (m.status === "rejected") return false;
+    if (!m.created_at) return false;
+    const createdTime = new Date(m.created_at).getTime();
+    return Date.now() - createdTime < 180000;
   };
 
   const handleCopyPostText = async (moment: MomentClip) => {
@@ -709,15 +732,33 @@ export default function StreamerPreviewPage() {
                               </div>
                             ) : null}
                           </div>
-                        ) : (
+                        ) : isActivelyRendering(moment) ? (
                           <div className="p-3 bg-muted/40 rounded-lg border border-border/50 text-center space-y-1">
-                            <Video className="size-5 mx-auto text-primary animate-pulse" />
+                            <RefreshCw className="size-5 mx-auto text-primary animate-spin" />
                             <p className="text-[11px] font-semibold text-foreground">
                               Processing 9:16 Video...
                             </p>
                             <p className="text-[10px] text-muted-foreground">
                               Transcribing speech & active speaker framing
                             </p>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-muted/40 rounded-lg border border-border/50 text-center space-y-1.5">
+                            <AlertTriangle className="size-5 mx-auto text-amber-500/80" />
+                            <p className="text-[11px] font-semibold text-foreground">
+                              Clip Unavailable
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Buffer expired or render incomplete
+                            </p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-[10px] h-6 text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteMoment(moment.id)}
+                            >
+                              <Trash2 className="size-2.5 mr-1" /> Remove
+                            </Button>
                           </div>
                         )}
 
@@ -791,6 +832,15 @@ export default function StreamerPreviewPage() {
                                 </a>
                               </Button>
                             )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 size-7 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteMoment(moment.id)}
+                              title="Remove moment"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
                           </div>
                         </div>
                       </div>

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   Clock,
   Copy,
@@ -17,7 +18,6 @@ import {
   Sparkles,
   Trash2,
   Tv,
-  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -311,6 +311,28 @@ export default function LiveDashboardPage() {
     } catch {
       toast.error("Failed to reject moment");
     }
+  };
+
+  const handleDeleteMoment = async (momentId: string) => {
+    try {
+      const res = await fetch(`/api/live/moments/${momentId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Moment removed");
+        await fetchDashboardData();
+      } else {
+        toast.error("Failed to delete moment");
+      }
+    } catch {
+      toast.error("Network error deleting moment");
+    }
+  };
+
+  const isActivelyRendering = (m: LiveMoment) => {
+    if (m.clip_id || m.clip?.id) return false;
+    if (m.status === "failed" || m.status === "rejected") return false;
+    if (!m.created_at) return false;
+    const createdTime = new Date(m.created_at).getTime();
+    return Date.now() - createdTime < 180000;
   };
 
   const handleCopyPostText = (moment: LiveMoment) => {
@@ -635,10 +657,27 @@ export default function LiveDashboardPage() {
                             className="w-full h-full object-contain"
                             src={`/api/tasks/${moment.task_id}/clips/${moment.clip_id || moment.clip?.id}/file`}
                           />
+                        ) : isActivelyRendering(moment) ? (
+                          <div className="text-center p-4 space-y-2 text-muted-foreground">
+                            <RefreshCw className="w-7 h-7 mx-auto text-primary animate-spin" />
+                            <p className="text-xs font-semibold text-foreground">Rendering Vertical Clip...</p>
+                            <p className="text-[10px] text-muted-foreground">Usually takes 15–30 seconds</p>
+                          </div>
                         ) : (
                           <div className="text-center p-4 space-y-2 text-muted-foreground">
-                            <Video className="w-8 h-8 mx-auto opacity-50" />
-                            <p className="text-xs">Rendering Vertical Clip...</p>
+                            <AlertTriangle className="w-6 h-6 mx-auto text-amber-500/80" />
+                            <p className="text-xs font-semibold text-foreground">Clip Unavailable</p>
+                            <p className="text-[10px] text-muted-foreground max-w-[200px]">
+                              Stream buffer segment expired or render incomplete
+                            </p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-[11px] h-7 text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteMoment(moment.id)}
+                            >
+                              <Trash2 className="w-3 h-3 mr-1" /> Remove
+                            </Button>
                           </div>
                         )}
 
@@ -785,6 +824,13 @@ export default function LiveDashboardPage() {
                                   <Download className="w-3.5 h-3.5" />
                                 </a>
                               )}
+                              <button
+                                onClick={() => handleDeleteMoment(moment.id)}
+                                className="hover:text-destructive text-muted-foreground transition-colors"
+                                title="Delete moment"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         </div>
