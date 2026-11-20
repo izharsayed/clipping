@@ -377,6 +377,7 @@ def _merge_task_source_metadata(
     add_subtitles: Any = None,
     cleanup_settings: Dict[str, Any] | None = None,
     transcription_provider: Any = None,
+    audio_first: Any = None,
 ) -> Dict[str, Any]:
     merged = dict(existing or {})
 
@@ -394,6 +395,10 @@ def _merge_task_source_metadata(
         norm = str(transcription_provider).strip().lower().replace("-", "_")
         if norm in {"auto", "assemblyai", "whisper", "youtube_captions"}:
             merged["transcription_provider"] = norm
+    if audio_first is not None:
+        norm_af = str(audio_first).strip().lower()
+        if norm_af in {"auto", "15", "30", "45", "60", "always", "never"}:
+            merged["audio_first"] = norm_af
 
     return merged
 
@@ -697,6 +702,11 @@ async def _create_task(request: Request, db: AsyncSession, attempt: SourceAttemp
         transcription_provider = str(transcription_provider).strip().lower().replace("-", "_")
         if transcription_provider not in {"auto", "assemblyai", "whisper", "youtube_captions"}:
             transcription_provider = "auto"
+    audio_first = data.get("audio_first") or data.get("audioFirstThreshold") or data.get("audio_first_threshold")
+    if audio_first is not None:
+        audio_first = str(audio_first).strip().lower()
+        if audio_first not in {"auto", "15", "30", "45", "60", "always", "never"}:
+            audio_first = "auto"
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -713,6 +723,7 @@ async def _create_task(request: Request, db: AsyncSession, attempt: SourceAttemp
         "clip_length": clip_length,
         "cleanup_settings": cleanup_settings,
         "transcription_provider": transcription_provider,
+        "audio_first": audio_first,
     }
     if not workflow_spec.legacy:
         # Plain highlights keep their existing key. The key is a hash, so topic
@@ -859,6 +870,7 @@ async def _create_task(request: Request, db: AsyncSession, attempt: SourceAttemp
                         add_subtitles=add_subtitles,
                         cleanup_settings=cleanup_settings,
                         transcription_provider=transcription_provider,
+                        audio_first=audio_first,
                     ),
                     db=db,
                 )

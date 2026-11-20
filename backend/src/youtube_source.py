@@ -1054,8 +1054,6 @@ def download_audio_for_job(
                 task_id=task_id,
             )
             return existing
-        if not proxy_configured(runtime):
-            raise YouTubeDownloadError("Audio-first download requires YOUTUBE_PROXY_URL")
         # Hold the per-video lock through download and manifest publication.
         # Concurrent jobs must not overwrite the same native downloader files.
         downloaded = download_audio(
@@ -1262,9 +1260,6 @@ def materialize_clip_source(
             return full
         pieces = _pieces(directory, manifest)
         gaps = missing_intervals([(piece.start, piece.end) for piece in pieces], needed)
-
-        if gaps and not proxy_configured(runtime):
-            raise PartialDownloadUnavailable("Section download requires YOUTUBE_PROXY_URL")
 
         # Recheck and fill gaps under the same lock so a waiting job reuses
         # completed files instead of writing to another job's native parts.

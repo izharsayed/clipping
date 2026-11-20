@@ -138,3 +138,44 @@ async def test_load_task_source_settings_accepts_smart_vertical_mode(monkeypatch
     settings = await service._load_task_source_settings("task-123")
 
     assert settings["output_format"] == output_format
+
+
+def test_merge_task_source_metadata_accepts_audio_first():
+    merged = _merge_task_source_metadata(
+        {},
+        source_url="upload://demo.mp4",
+        source_type="video_url",
+        audio_first="30",
+    )
+    assert merged["audio_first"] == "30"
+
+    merged_auto = _merge_task_source_metadata(
+        {},
+        source_url="upload://demo.mp4",
+        source_type="video_url",
+        audio_first="always",
+    )
+    assert merged_auto["audio_first"] == "always"
+
+
+def test_should_use_audio_first_logic():
+    from src.config import Config
+
+    cfg = Config()
+    cfg.audio_first_min_duration_minutes = 30
+
+    # Defaults (auto / None)
+    assert cfg.should_use_audio_first(1800, "auto") is True
+    assert cfg.should_use_audio_first(1799, "auto") is False
+    assert cfg.should_use_audio_first(1800, None) is True
+    assert cfg.should_use_audio_first(1799, None) is False
+
+    # Explicit threshold
+    assert cfg.should_use_audio_first(900, "15") is True
+    assert cfg.should_use_audio_first(899, "15") is False
+    assert cfg.should_use_audio_first(3600, "60") is True
+
+    # Always / Never
+    assert cfg.should_use_audio_first(10, "always") is True
+    assert cfg.should_use_audio_first(10000, "never") is False
+

@@ -87,6 +87,41 @@
       "hint": "Transcrição neural na nuvem mais rápida"
     }
   },
+  "audioFirst": {
+    "label": "Áudio Primeiro",
+    "title": "Streaming com Áudio Primeiro (Vídeos Longos)",
+    "description": "Baixa primeiro o áudio leve (~100MB) para transcrição rápida e depois busca apenas os clipes de vídeo necessários."
+  },
+  "audioFirstOptions": {
+    "auto": {
+      "label": "Auto (30m+)",
+      "hint": "Usa áudio primeiro para vídeos com 30 minutos ou mais"
+    },
+    "15": {
+      "label": "15 min+",
+      "hint": "Áudio primeiro para vídeos acima de 15 minutos"
+    },
+    "30": {
+      "label": "30 min+",
+      "hint": "Áudio primeiro para vídeos acima de 30 minutos"
+    },
+    "45": {
+      "label": "45 min+",
+      "hint": "Áudio primeiro para vídeos acima de 45 minutos"
+    },
+    "60": {
+      "label": "60 min+",
+      "hint": "Áudio primeiro para vídeos acima de 1 hora"
+    },
+    "always": {
+      "label": "Sempre",
+      "hint": "Sempre baixar o áudio primeiro para todos os vídeos"
+    },
+    "never": {
+      "label": "Nunca",
+      "hint": "Sempre baixar o arquivo de vídeo completo diretamente"
+    }
+  },
   "captions": "Legendas",
   "noCaptions": "Sem legendas",
   "broll": "B-roll",

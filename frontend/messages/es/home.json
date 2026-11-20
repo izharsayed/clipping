@@ -87,6 +87,41 @@
       "hint": "Transcripción neuronal en la nube más rápida"
     }
   },
+  "audioFirst": {
+    "label": "Audio primero",
+    "title": "Transmisión de audio primero (Videos largos)",
+    "description": "Descarga primero el audio ligero (~100MB) para una rápida transcripción y luego obtiene solo los clips necesarios."
+  },
+  "audioFirstOptions": {
+    "auto": {
+      "label": "Auto (30m+)",
+      "hint": "Usa audio primero para videos de 30 minutos o más"
+    },
+    "15": {
+      "label": "15 min+",
+      "hint": "Audio primero para videos mayores a 15 minutos"
+    },
+    "30": {
+      "label": "30 min+",
+      "hint": "Audio primero para videos mayores a 30 minutos"
+    },
+    "45": {
+      "label": "45 min+",
+      "hint": "Audio primero para videos mayores a 45 minutos"
+    },
+    "60": {
+      "label": "60 min+",
+      "hint": "Audio primero para videos mayores a 1 hora"
+    },
+    "always": {
+      "label": "Siempre",
+      "hint": "Descargar siempre primero el audio para todos los videos"
+    },
+    "never": {
+      "label": "Nunca",
+      "hint": "Descargar siempre el archivo de video completo directamente"
+    }
+  },
   "captions": "Subtítulos",
   "noCaptions": "Sin subtítulos",
   "broll": "B-roll",

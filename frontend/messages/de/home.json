@@ -87,6 +87,41 @@
       "hint": "Schnellste neuronale Cloud-Transkription"
     }
   },
+  "audioFirst": {
+    "label": "Audio-Zuerst",
+    "title": "Audio-First-Streaming (Lange Videos)",
+    "description": "Lädt zuerst die leichte Tonspur (~100MB) herunter, um blitzschnell zu transkribieren, und holt erst danach die ausgewählten Clips."
+  },
+  "audioFirstOptions": {
+    "auto": {
+      "label": "Auto (30m+)",
+      "hint": "Verwendet Audio-Zuerst ab 30 Minuten Videolänge"
+    },
+    "15": {
+      "label": "15 min+",
+      "hint": "Audio-Zuerst ab 15 Minuten"
+    },
+    "30": {
+      "label": "30 min+",
+      "hint": "Audio-Zuerst ab 30 Minuten"
+    },
+    "45": {
+      "label": "45 min+",
+      "hint": "Audio-Zuerst ab 45 Minuten"
+    },
+    "60": {
+      "label": "60 min+",
+      "hint": "Audio-Zuerst ab 1 Stunde"
+    },
+    "always": {
+      "label": "Immer",
+      "hint": "Immer zuerst Audio für alle YouTube-Videos laden"
+    },
+    "never": {
+      "label": "Nie",
+      "hint": "Immer direkt die vollständige Videodatei laden"
+    }
+  },
   "captions": "Untertitel",
   "noCaptions": "Keine Untertitel",
   "broll": "B-Roll",

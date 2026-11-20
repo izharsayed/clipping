@@ -6,11 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   AlertCircle, ArrowRight, ArrowUp, Captions, CaptionsOff, Check, ChevronDown, Clapperboard, Cpu, Crop, FileVideo, SlidersHorizontal,
-  Info, ListOrdered, Loader2, MessageSquareText, Timer, Paperclip, Sparkles, Target, Upload, Link2, Wand2, X,
+  Info, ListOrdered, Loader2, MessageSquareText, Timer, Paperclip, Sparkles, Target, Upload, Link2, Volume2, Wand2, X,
 } from "lucide-react";
 import { CaptionSizeControl } from "@/components/caption-size-control";
 import { ComposerSettings } from "@/components/composer-settings";
-import { OUTPUT_FORMATS, TRANSCRIPTION_PROVIDERS, parseCreateSettings, type CreateSettings, type LengthWorkflow, type OutputFormat, type TranscriptionProvider } from "@/lib/create-settings";
+import { AUDIO_FIRST_THRESHOLDS, OUTPUT_FORMATS, TRANSCRIPTION_PROVIDERS, parseCreateSettings, type AudioFirstThreshold, type CreateSettings, type LengthWorkflow, type OutputFormat, type TranscriptionProvider } from "@/lib/create-settings";
 import { VideoSourceIcon } from "@/components/video-source-icon";
 import { availableWorkflows, useWorkflowsInfo, WorkflowPicker } from "@/components/workflow-picker";
 import { changedSettings, invalidSetting, WorkflowAdvancedSettings, type AdvancedValues } from "@/components/workflow-advanced";
@@ -175,6 +175,7 @@ export default function HomeApp() {
   const [removeFillerWords, setRemoveFillerWords] = useState(true);
   const [filteredWords, setFilteredWords] = useState("");
   const [transcriptionProvider, setTranscriptionProvider] = useState<TranscriptionProvider>("auto");
+  const [audioFirstThreshold, setAudioFirstThreshold] = useState<AudioFirstThreshold>("auto");
 
   // What to make. Hidden, and always plain highlights, unless the server enables workflows.
   const router = useRouter();
@@ -304,6 +305,7 @@ export default function HomeApp() {
     unlessChanged(setRemoveFillerWords, true, saved.removeFillerWords);
     unlessChanged(setFilteredWords, "", saved.filteredWords);
     unlessChanged<TranscriptionProvider>(setTranscriptionProvider, "auto", saved.transcriptionProvider);
+    unlessChanged<AudioFirstThreshold>(setAudioFirstThreshold, "auto", saved.audioFirstThreshold);
     if (saved.lengths) setWorkflowLengths((current) => ({ ...saved.lengths, ...current }));
     if (saved.advanced) setAdvancedByWorkflow((current) => ({ ...saved.advanced, ...current }));
     setSettingsLoaded(true);
@@ -323,6 +325,7 @@ export default function HomeApp() {
     setRemoveFillerWords(true);
     setFilteredWords("");
     setTranscriptionProvider("auto");
+    setAudioFirstThreshold("auto");
     setWorkflowLengths({});
     setAdvancedByWorkflow({});
   }
@@ -644,10 +647,11 @@ export default function HomeApp() {
     addSubtitles ? `${t("captions")}: ${captionSummary}` : captionSummary,
     t(`framingOptions.${outputFormat}.label`),
     t(`transcriptionOptions.${transcriptionProvider}.label`),
+    ...(audioFirstThreshold !== "auto" ? [t(`audioFirstOptions.${audioFirstThreshold}.label`)] : []),
   ].join(" · ");
   // Cleanup is on by default, so it isn't counted as a change here; its own section shows what's on.
-  const changedCount = advancedCount + (includeBroll ? 1 : 0) + (transcriptionProvider !== "auto" ? 1 : 0);
-  const settingsChanged = changedCount > 0 || selectedLength !== "auto" || partCount !== "auto" || customized || !addSubtitles || transcriptionProvider !== "auto";
+  const changedCount = advancedCount + (includeBroll ? 1 : 0) + (transcriptionProvider !== "auto" ? 1 : 0) + (audioFirstThreshold !== "auto" ? 1 : 0);
+  const settingsChanged = changedCount > 0 || selectedLength !== "auto" || partCount !== "auto" || customized || !addSubtitles || transcriptionProvider !== "auto" || audioFirstThreshold !== "auto";
 
   // Only what is valid is remembered, so a half-typed number never comes back to block the form.
   const settingsToSave = JSON.stringify({
@@ -661,6 +665,7 @@ export default function HomeApp() {
       removeFillerWords,
       filteredWords,
       transcriptionProvider,
+      audioFirstThreshold,
       lengths: workflowLengths,
       advanced: Object.fromEntries(Object.entries(advancedByWorkflow).map(([id, values]) => {
         const schema = workflowsInfo?.workflows.find((entry) => entry.id === id)?.settings;
@@ -791,6 +796,9 @@ export default function HomeApp() {
       };
       if (transcriptionProvider && transcriptionProvider !== "auto") {
         request.transcription_provider = transcriptionProvider;
+      }
+      if (audioFirstThreshold && audioFirstThreshold !== "auto") {
+        request.audio_first = audioFirstThreshold;
       }
       // Plain highlights without instructions sends exactly the request it always has.
       const options: WorkflowOptions = {};
@@ -1326,6 +1334,53 @@ export default function HomeApp() {
                               </div>
                               <span className="mt-1 block text-xs text-muted-foreground">
                                 {t(`transcriptionOptions.${provider}.hint`)}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) },
+                  { id: "audio_first", label: t("audioFirst.label"), icon: <Volume2 />, value: t(`audioFirstOptions.${audioFirstThreshold}.label`), content: (
+                    <>
+                      <div className="mb-3">
+                        <p className="text-sm font-medium">{t("audioFirst.title")}</p>
+                        <p className="text-xs text-muted-foreground">{t("audioFirst.description")}</p>
+                      </div>
+                      <div className="space-y-2" role="radiogroup" aria-label={t("audioFirst.title")}>
+                        {AUDIO_FIRST_THRESHOLDS.map((thresh) => (
+                          <button
+                            key={thresh}
+                            type="button"
+                            role="radio"
+                            aria-checked={audioFirstThreshold === thresh}
+                            onClick={() => setAudioFirstThreshold(thresh)}
+                            className={cn(
+                              "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-accent",
+                              audioFirstThreshold === thresh && "border-foreground ring-1 ring-foreground"
+                            )}
+                          >
+                            <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-primary text-primary">
+                              {audioFirstThreshold === thresh && (
+                                <div className="size-2 rounded-full bg-primary" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{t(`audioFirstOptions.${thresh}.label`)}</span>
+                                {thresh === "auto" && (
+                                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                    Recommended (30m)
+                                  </span>
+                                )}
+                                {thresh === "always" && (
+                                  <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-600 dark:text-purple-400">
+                                    Fastest
+                                  </span>
+                                )}
+                              </div>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {t(`audioFirstOptions.${thresh}.hint`)}
                               </span>
                             </div>
                           </button>

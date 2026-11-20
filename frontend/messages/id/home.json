@@ -87,6 +87,41 @@
       "hint": "Transkripsi neural cloud tercepat"
     }
   },
+  "audioFirst": {
+    "label": "Audio Dahulu",
+    "title": "Streaming Audio Dahulu (Video Panjang)",
+    "description": "Mengunduh audio ringan dahulu (~100MB) untuk transkripsi cepat, lalu hanya mengambil clip video yang diperlukan."
+  },
+  "audioFirstOptions": {
+    "auto": {
+      "label": "Otomatis (30m+)",
+      "hint": "Gunakan audio dahulu untuk video 30 menit atau lebih"
+    },
+    "15": {
+      "label": "15 mnt+",
+      "hint": "Audio dahulu untuk video lebih dari 15 menit"
+    },
+    "30": {
+      "label": "30 mnt+",
+      "hint": "Audio dahulu untuk video lebih dari 30 menit"
+    },
+    "45": {
+      "label": "45 mnt+",
+      "hint": "Audio dahulu untuk video lebih dari 45 menit"
+    },
+    "60": {
+      "label": "60 mnt+",
+      "hint": "Audio dahulu untuk video lebih dari 1 jam"
+    },
+    "always": {
+      "label": "Selalu",
+      "hint": "Selalu unduh audio dahulu untuk semua video"
+    },
+    "never": {
+      "label": "Jangan Pernah",
+      "hint": "Selalu unduh file video lengkap secara langsung"
+    }
+  },
   "captions": "Caption",
   "noCaptions": "Tanpa caption",
   "broll": "B-roll",

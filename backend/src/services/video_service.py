@@ -786,6 +786,7 @@ class VideoService:
         processing_mode: str = "balanced",
         source_url: Optional[str] = None,
         transcription_provider: Optional[str] = None,
+        audio_first_setting: Optional[str] = None,
     ) -> str:
         """
         Generate transcript from video using the configured provider
@@ -1340,6 +1341,7 @@ class VideoService:
         checkpoint: Optional[Dict[str, Any]] = None,
         checkpoint_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
         transcription_provider: Optional[str] = None,
+        audio_first_setting: Optional[str] = None,
         *,
         workflow_spec: Optional[WorkflowSpec] = None,
         plan_cache: Optional[PlanCache] = None,
@@ -1420,9 +1422,20 @@ class VideoService:
                     await run_in_thread(cached_full_media, video_id, download_quality)
                     if video_id else None
                 )
-                # Audio first only when a proxy is configured and we do not
-                # already have the full source cached. Uploads never reach here.
-                if proxy_configured(runtime_config) and video_id and not cached_full:
+                # Audio first when video duration meets threshold (or requested) or proxy is configured.
+                # Uploads never reach here.
+                should_use_audio = (
+                    video_id
+                    and not cached_full
+                    and (
+                        runtime_config.should_use_audio_first(source_duration, audio_first_setting)
+                        or proxy_configured(runtime_config)
+                    )
+                )
+                if should_use_audio:
+                    if progress_callback:
+                        await progress_callback(10, "Downloading audio track...", "processing")
+
                     def _resolve_analysis():
                         def _download_full():
                             return resolve_full_youtube_download(

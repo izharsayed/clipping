@@ -347,6 +347,11 @@ class Config:
         self.workflow_full_context_max_words = (
             max(0, self._get_int_env("WORKFLOW_FULL_CONTEXT_MAX_WORDS", 0)) or None
         )
+        # Threshold in minutes to trigger audio-first streaming for long videos (default 30 min).
+        # Set AUDIO_FIRST_MIN_DURATION_MINUTES in .env to customize.
+        self.audio_first_min_duration_minutes = max(
+            1, self._get_int_env("AUDIO_FIRST_MIN_DURATION_MINUTES", 30)
+        )
         self.default_processing_mode = os.getenv("DEFAULT_PROCESSING_MODE", "fast")
         self.fast_mode_max_clips = int(os.getenv("FAST_MODE_MAX_CLIPS", "10"))
         self.fast_mode_transcript_model = os.getenv(
@@ -380,6 +385,28 @@ class Config:
         if (plan or "").lower() == "pro":
             return self.pro_youtube_max_video_duration
         return self.max_video_duration
+
+    def should_use_audio_first(
+        self,
+        duration_seconds: float | None,
+        requested_threshold: str | int | None = None,
+    ) -> bool:
+        """Determine whether audio-first streaming should be used for a source."""
+        if requested_threshold is not None:
+            norm = str(requested_threshold).strip().lower()
+            if norm == "always":
+                return True
+            if norm in {"never", "false", "off"}:
+                return False
+            if norm != "auto":
+                try:
+                    mins = int(norm)
+                    return (duration_seconds or 0) >= (mins * 60)
+                except ValueError:
+                    pass
+
+        threshold_seconds = self.audio_first_min_duration_minutes * 60
+        return (duration_seconds or 0) >= threshold_seconds
 
     @staticmethod
     def _get_optional_env(name: str):

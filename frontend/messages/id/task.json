@@ -124,6 +124,8 @@
   "openInEditor": "Buka di editor",
   "steps": {
     "fetching": "Mengambil video",
+    "fetchingAudio": "Mengambil audio",
+    "fetchingSegments": "Mengambil clip video",
     "transcribing": "Mentranskripsi",
     "finding": "Mencari momen",
     "rendering": "Merender clip"
@@ -132,6 +134,8 @@
     "queued": "Menunggu worker",
     "estimating": "Memperkirakan sisa waktu…",
     "stillDownloading": "Video Anda masih diunduh…",
+    "downloadingAudio": "Mengunduh trek audio…",
+    "downloadingSegments": "Mengunduh segmen video terpilih…",
     "minuteRange": "Sekitar {low}–{high} menit lagi",
     "underMinute": "Kurang dari satu menit lagi",
     "minutes": "Sekitar {count} menit lagi"

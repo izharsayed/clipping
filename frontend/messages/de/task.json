@@ -124,6 +124,8 @@
   "openInEditor": "Im Editor öffnen",
   "steps": {
     "fetching": "Video wird geholt",
+    "fetchingAudio": "Audio wird geholt",
+    "fetchingSegments": "Videoclips werden geholt",
     "transcribing": "Wird transkribiert",
     "finding": "Momente werden gesucht",
     "rendering": "Clips werden gerendert"
@@ -132,6 +134,8 @@
     "queued": "Wartet auf einen freien Worker",
     "estimating": "Restzeit wird geschätzt…",
     "stillDownloading": "Dein Video wird noch heruntergeladen…",
+    "downloadingAudio": "Audiospur wird heruntergeladen…",
+    "downloadingSegments": "Ausgewählte Videosegmente werden heruntergeladen…",
     "minuteRange": "Noch etwa {low}–{high} Min.",
     "underMinute": "Weniger als eine Minute",
     "minutes": "Noch etwa {count} Min."

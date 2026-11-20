@@ -7,6 +7,8 @@ export const LENGTH_WORKFLOWS = ["series", "recap", "trailer"] as const;
 export type LengthWorkflow = (typeof LENGTH_WORKFLOWS)[number];
 export const TRANSCRIPTION_PROVIDERS = ["auto", "assemblyai", "whisper"] as const;
 export type TranscriptionProvider = (typeof TRANSCRIPTION_PROVIDERS)[number];
+export const AUDIO_FIRST_THRESHOLDS = ["auto", "15", "30", "45", "60", "always", "never"] as const;
+export type AudioFirstThreshold = (typeof AUDIO_FIRST_THRESHOLDS)[number];
 
 /** What the create screen remembers between videos. Anything about one video (topic, instructions, part count) stays out. */
 export type CreateSettings = {
@@ -20,6 +22,7 @@ export type CreateSettings = {
   removeFillerWords?: boolean;
   filteredWords?: string;
   transcriptionProvider?: TranscriptionProvider;
+  audioFirstThreshold?: AudioFirstThreshold;
   lengths?: Partial<Record<LengthWorkflow, ClipLength>>;
   advanced?: Partial<Record<Workflow, Record<string, WorkflowSettingValue>>>;
 };
@@ -46,6 +49,9 @@ export function parseCreateSettings(value: unknown): CreateSettings {
   if (typeof value.filteredWords === "string" && value.filteredWords.length <= 2000) parsed.filteredWords = value.filteredWords;
   if (typeof value.transcriptionProvider === "string" && TRANSCRIPTION_PROVIDERS.includes(value.transcriptionProvider as TranscriptionProvider)) {
     parsed.transcriptionProvider = value.transcriptionProvider as TranscriptionProvider;
+  }
+  if (typeof value.audioFirstThreshold === "string" && AUDIO_FIRST_THRESHOLDS.includes(value.audioFirstThreshold as AudioFirstThreshold)) {
+    parsed.audioFirstThreshold = value.audioFirstThreshold as AudioFirstThreshold;
   }
   if (isRecord(value.lengths)) {
     const lengths: CreateSettings["lengths"] = {};

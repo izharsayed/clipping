@@ -124,6 +124,8 @@
   "openInEditor": "Abrir en el editor",
   "steps": {
     "fetching": "Obteniendo video",
+    "fetchingAudio": "Obteniendo audio",
+    "fetchingSegments": "Obteniendo clips de video",
     "transcribing": "Transcribiendo",
     "finding": "Buscando momentos",
     "rendering": "Renderizando clips"
@@ -132,6 +134,8 @@
     "queued": "Esperando a un worker",
     "estimating": "Calculando el tiempo restante…",
     "stillDownloading": "Tu video se sigue descargando…",
+    "downloadingAudio": "Descargando pista de audio…",
+    "downloadingSegments": "Descargando segmentos de video seleccionados…",
     "minuteRange": "Quedan entre {low} y {high} min aprox.",
     "underMinute": "Menos de un minuto",
     "minutes": "Unos {count} min restantes"

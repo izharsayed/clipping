@@ -87,6 +87,41 @@
       "hint": "Fastest cloud neural transcription"
     }
   },
+  "audioFirst": {
+    "label": "Audio-First",
+    "title": "Audio-First Streaming (Long Videos)",
+    "description": "Downloads lightweight audio (~100MB) for rapid transcription, then fetches only the video clips you need."
+  },
+  "audioFirstOptions": {
+    "auto": {
+      "label": "Auto (30m+)",
+      "hint": "Uses audio-first for videos 30 minutes or longer"
+    },
+    "15": {
+      "label": "15 min+",
+      "hint": "Use audio-first for videos over 15 minutes"
+    },
+    "30": {
+      "label": "30 min+",
+      "hint": "Use audio-first for videos over 30 minutes"
+    },
+    "45": {
+      "label": "45 min+",
+      "hint": "Use audio-first for videos over 45 minutes"
+    },
+    "60": {
+      "label": "60 min+",
+      "hint": "Use audio-first for videos over 1 hour"
+    },
+    "always": {
+      "label": "Always",
+      "hint": "Always download audio first for all YouTube videos"
+    },
+    "never": {
+      "label": "Never",
+      "hint": "Always download the full video file directly"
+    }
+  },
   "captions": "Captions",
   "noCaptions": "No captions",
   "broll": "B-roll",

@@ -521,6 +521,19 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
   );
 }
 
+/** Animated equalizer sound wave for audio-first download phase */
+export function AudioWaveAnimation({ className }: { className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-[2.5px] h-4.5 px-1 py-0.5 align-middle", className)} aria-hidden="true">
+      <span className="w-[3px] rounded-full bg-violet-500 animate-[bounce_0.8s_ease-in-out_infinite] [animation-delay:0.1s]" style={{ height: "45%" }} />
+      <span className="w-[3px] rounded-full bg-indigo-500 animate-[bounce_0.6s_ease-in-out_infinite] [animation-delay:0.25s]" style={{ height: "95%" }} />
+      <span className="w-[3px] rounded-full bg-primary animate-[bounce_0.75s_ease-in-out_infinite] [animation-delay:0.4s]" style={{ height: "60%" }} />
+      <span className="w-[3px] rounded-full bg-purple-500 animate-[bounce_0.55s_ease-in-out_infinite] [animation-delay:0.15s]" style={{ height: "100%" }} />
+      <span className="w-[3px] rounded-full bg-pink-500 animate-[bounce_0.85s_ease-in-out_infinite] [animation-delay:0.35s]" style={{ height: "50%" }} />
+    </span>
+  );
+}
+
 /** Pipeline steps, the share of the progress bar each one covers, and the hue its glow takes. */
 const STEPS = [
   { id: "fetching", until: 20, hue: 245 },
@@ -636,9 +649,18 @@ export function ProcessingPanel({ status, progress, message, phaseSince, sourceS
     observedSecondsPerClip: clock.perClip,
   };
   const remaining = remainingSeconds ?? estimateRemainingSeconds(etaInput);
+  const isAudioDownloading = step === 0 && /audio/i.test(message);
+  const isSegmentsDownloading = /selected (video )?segments/i.test(message);
+
   function timeLeftLabel() {
     if (recovery) return t("recovery.heading");
     if (status === "queued") return t("eta.queued");
+    if (isAudioDownloading) {
+      return t.has("eta.downloadingAudio") ? t("eta.downloadingAudio") : "Downloading audio track…";
+    }
+    if (isSegmentsDownloading) {
+      return t.has("eta.downloadingSegments") ? t("eta.downloadingSegments") : "Downloading selected video segments…";
+    }
     if (remainingSeconds === undefined) {
       if (!message) return t("eta.estimating");
       if (/^downloading\b/i.test(message) && isDownloadOverdue(etaInput)) return t("eta.stillDownloading");
@@ -656,7 +678,10 @@ export function ProcessingPanel({ status, progress, message, phaseSince, sourceS
           style={{ background: `radial-gradient(circle at 40% 50%, oklch(0.87 0.06 ${stepHue(step)}), transparent 65%)` }} />
       </div>
       <div className="flex items-baseline justify-between gap-6">
-        <p className="font-display text-2xl font-bold tracking-tight tabular-nums">{timeLeftLabel()}</p>
+        <div className="flex items-center gap-2.5">
+          <p className="font-display text-2xl font-bold tracking-tight tabular-nums">{timeLeftLabel()}</p>
+          {isAudioDownloading && <AudioWaveAnimation />}
+        </div>
         {clip && !SINGLE_OUTPUT.has(workflow) && <p className="text-sm tabular-nums text-muted-foreground">{workflow === "series" ? t("partOf", { n: clip.current, total: clip.total }) : t("clipOf", clip)}</p>}
       </div>
       {recovery && (
@@ -665,14 +690,18 @@ export function ProcessingPanel({ status, progress, message, phaseSince, sourceS
           <p>{t(`recovery.messages.${delayMessage}`)}</p>
         </div>
       )}
-      <div className="mt-4 h-2 rounded-full bg-stone-200/60 dark:bg-stone-800/60" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label={t("percentComplete", { progress })}>
-        <div className="metal-flow h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${Math.max(progress, 1)}%` }} />
+      <div className={cn("mt-4 h-2 rounded-full bg-stone-200/60 dark:bg-stone-800/60", isAudioDownloading && "ring-1 ring-primary/40")} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label={t("percentComplete", { progress })}>
+        <div className={cn("metal-flow h-full rounded-full transition-[width] duration-700 ease-out", isAudioDownloading && "shadow-[0_0_12px_rgba(168,85,247,0.5)]")} style={{ width: `${Math.max(progress, 1)}%` }} />
       </div>
       <ol className="mt-2.5 grid text-xs" style={{ gridTemplateColumns: STEPS.map((s, i) => `${s.until - (i ? STEPS[i - 1].until : 0)}fr`).join(" ") }}>
         {STEPS.map((s, i) => (
           <li key={s.id} className={cn("flex items-center gap-1 truncate pr-2", i < step ? "text-foreground/60" : i === step ? "font-medium text-foreground" : "text-foreground/35")}>
-            {i < step && <Check className="size-3 shrink-0" />}
-            <span className="truncate">{stepLabel(t, workflow, s.id)}</span>
+            {i === step && s.id === "fetching" && isAudioDownloading ? (
+              <AudioWaveAnimation className="mr-0.5 scale-75" />
+            ) : i < step ? (
+              <Check className="size-3 shrink-0" />
+            ) : null}
+            <span className="truncate">{stepLabel(t, workflow, s.id, message)}</span>
           </li>
         ))}
       </ol>
@@ -681,7 +710,15 @@ export function ProcessingPanel({ status, progress, message, phaseSince, sourceS
   );
 }
 
-function stepLabel(t: TaskT, workflow: Workflow, step: (typeof STEPS)[number]["id"]) {
+function stepLabel(t: TaskT, workflow: Workflow, step: (typeof STEPS)[number]["id"], message?: string) {
+  if (step === "fetching" && message) {
+    if (/audio/i.test(message)) {
+      return t.has("steps.fetchingAudio") ? t("steps.fetchingAudio") : "Fetching audio";
+    }
+    if (/selected (video )?segments/i.test(message)) {
+      return t.has("steps.fetchingSegments") ? t("steps.fetchingSegments") : "Fetching clip video";
+    }
+  }
   const key = `stepsByWorkflow.${workflow}.${step}`;
   return t.has(key) ? t(key) : t(`steps.${step}`);
 }

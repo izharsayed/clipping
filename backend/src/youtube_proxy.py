@@ -387,7 +387,6 @@ def base_proxy_params(task_id: Optional[str] = None, video_id: Optional[str] = N
         getattr(runtime, "youtube_proxy_country", "") if country is None else country
     )
     params: dict[str, Any] = {
-        "proxy": render_proxy_url(runtime.youtube_proxy_url, session, country),
         # yt-dlp treats 0.0.0.0 as "force IPv4" (the -4 flag).
         "source_address": "0.0.0.0",
         "socket_timeout": 30,
@@ -406,6 +405,9 @@ def base_proxy_params(task_id: Optional[str] = None, video_id: Optional[str] = N
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
+    if proxy_configured(runtime):
+        params["proxy"] = render_proxy_url(runtime.youtube_proxy_url, session, country)
+
     pot_url = (getattr(runtime, "youtube_pot_provider_url", "") or "").strip()
     if pot_url:
         params["extractor_args"] = {
@@ -508,6 +510,22 @@ def _with_proxy_retry(operation: Callable, *, task_id: Optional[str], video_id: 
     route = budget.proxy_route(task_id, video_id)
     country = route[0] if route else normalize_country(getattr(runtime, "youtube_proxy_country", ""))
     session = route[1] if route else sticky_session_id(task_id, video_id)
+
+    if not proxy_configured(runtime):
+        options = download_options(task_id, video_id, budget, session_id=session, country=country)
+        options["_youtube_deadline"] = overall_deadline
+        options["_youtube_overall_deadline"] = overall_deadline
+        try:
+            _check_deadline(options)
+            return operation(options)
+        except Exception as exc:
+            cleanup()
+            if isinstance(exc, DownloadBudgetExceeded):
+                raise
+            if is_geo_restricted_error(exc):
+                raise YouTubeGeoRestrictedError() from exc
+            raise
+
     geo_retry = False
     transport_retry = False
     retry_deadline = None

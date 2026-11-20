@@ -124,6 +124,8 @@
   "openInEditor": "在编辑器中打开",
   "steps": {
     "fetching": "获取视频",
+    "fetchingAudio": "获取音频",
+    "fetchingSegments": "获取视频切片",
     "transcribing": "转录中",
     "finding": "寻找片段",
     "rendering": "渲染片段"
@@ -132,6 +134,8 @@
     "queued": "正在等待处理",
     "estimating": "正在估算剩余时间…",
     "stillDownloading": "仍在下载视频…",
+    "downloadingAudio": "正在下载音轨…",
+    "downloadingSegments": "正在下载选定视频切片…",
     "minuteRange": "大约还需 {low}–{high} 分钟",
     "underMinute": "不到一分钟",
     "minutes": "大约还需 {count} 分钟"
