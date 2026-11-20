@@ -177,9 +177,10 @@ export default function StreamerPreviewPage() {
     setSpecMaxDuration(max);
   };
 
-  const handleToggleAutoPublish = async () => {
+  const handleToggleAutoPublish = async (forcedValue?: boolean) => {
     if (!channel) return;
-    const nextValue = !channel.auto_publish;
+    const nextValue = forcedValue !== undefined ? forcedValue : !channel.auto_publish;
+    if (nextValue === channel.auto_publish) return;
 
     // Optimistically update
     setChannel((prev) => (prev ? { ...prev, auto_publish: nextValue } : prev));
@@ -767,7 +768,7 @@ export default function StreamerPreviewPage() {
 
                   {/* Auto-Publish Tile with Inline Switch */}
                   <div
-                    onClick={() => handleToggleAutoPublish()}
+                    onClick={() => handleToggleAutoPublish(!channel.auto_publish)}
                     className="p-2.5 rounded-lg bg-muted/40 border border-border/40 flex flex-col justify-between hover:border-primary/50 hover:bg-muted/60 transition cursor-pointer select-none"
                     role="button"
                     tabIndex={0}
@@ -775,7 +776,7 @@ export default function StreamerPreviewPage() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        handleToggleAutoPublish();
+                        handleToggleAutoPublish(!channel.auto_publish);
                       }
                     }}
                   >
@@ -783,12 +784,14 @@ export default function StreamerPreviewPage() {
                       <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
                         Auto-Publish
                       </span>
-                      <Switch
-                        checked={channel.auto_publish}
-                        onCheckedChange={() => handleToggleAutoPublish()}
-                        className="scale-75 origin-right"
-                        aria-label="Auto-publish switch"
-                      />
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Switch
+                          checked={channel.auto_publish}
+                          onCheckedChange={(val) => handleToggleAutoPublish(val)}
+                          className="scale-75 origin-right"
+                          aria-label="Auto-publish switch"
+                        />
+                      </div>
                     </div>
                     <div>
                       <span className="font-bold text-foreground">
