@@ -9,7 +9,15 @@ import re
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps  # type: ignore
+except ImportError:
+    Image = None  # type: ignore
+    ImageDraw = None  # type: ignore
+    ImageFilter = None  # type: ignore
+    ImageFont = None  # type: ignore
+    ImageOps = None  # type: ignore
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 FONTS_DIR = BASE_DIR / "backend" / "fonts"
