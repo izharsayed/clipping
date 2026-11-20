@@ -181,8 +181,15 @@ def _get_whisper_model(model_name: str = "base"):
             "Whisper is not installed. Install it with: uv add openai-whisper"
         )
     if model_name not in _WHISPER_MODEL_CACHE:
-        logger.info("Loading Whisper model: %s", model_name)
-        _WHISPER_MODEL_CACHE[model_name] = _whisper.load_model(model_name)
+        device = "cpu"
+        try:
+            import torch
+            if torch.cuda.is_available():
+                device = "cuda"
+        except Exception:
+            device = "cpu"
+        logger.info("Loading Whisper model: %s on device: %s", model_name, device)
+        _WHISPER_MODEL_CACHE[model_name] = _whisper.load_model(model_name, device=device)
     return _WHISPER_MODEL_CACHE[model_name]
 
 
@@ -320,16 +327,18 @@ def get_video_transcript(
     video_path: Path,
     speech_model: str = "universal",
     source_url: Optional[str] = None,
+    transcription_provider: Optional[str] = None,
 ) -> str:
     """Get a video transcript using the configured provider.
 
-    Dispatches to AssemblyAI, local Whisper, or YouTube captions based on
-    ``TRANSCRIPTION_PROVIDER``. ``source_url`` enables the youtube_captions
-    provider, which needs the original URL rather than a local file path.
+    Dispatches to AssemblyAI, local Whisper, YouTube captions, or auto (hybrid).
+    ``source_url`` enables the youtube_captions provider, which needs the original
+    URL rather than a local file path.
     """
     logger.info(f"Getting transcript for: {video_path}")
     runtime_config = get_config()
-    provider = runtime_config.transcription_provider
+    provider = transcription_provider or runtime_config.transcription_provider or "auto"
+    provider = provider.strip().lower().replace("-", "_")
 
     if provider == "whisper":
         return _get_transcript_with_whisper(video_path, runtime_config)
@@ -340,7 +349,23 @@ def get_video_transcript(
                 "Pass source_url to get_video_transcript()."
             )
         return _get_transcript_with_youtube_captions(source_url)
-    return _get_transcript_with_assemblyai(video_path, speech_model, runtime_config)
+    if provider == "assemblyai":
+        return _get_transcript_with_assemblyai(video_path, speech_model, runtime_config)
+
+    # Hybrid / Auto mode: Try AssemblyAI first if key present; on failure or missing key fallback to Whisper
+    if getattr(runtime_config, "assembly_ai_api_key", None):
+        try:
+            logger.info("Auto/Hybrid mode: attempting AssemblyAI transcription first")
+            return _get_transcript_with_assemblyai(video_path, speech_model, runtime_config)
+        except Exception as exc:
+            logger.warning(
+                "AssemblyAI transcription failed (%s); falling back to local GPU/CPU Whisper",
+                exc,
+            )
+            return _get_transcript_with_whisper(video_path, runtime_config)
+
+    logger.info("Auto/Hybrid mode: No AssemblyAI API key configured; using local GPU/CPU Whisper")
+    return _get_transcript_with_whisper(video_path, runtime_config)
 
 
 def _get_transcript_with_assemblyai(

@@ -230,6 +230,66 @@ class VideoUtilsDiarizationTests(unittest.TestCase):
         self.assertIn("General Kenobi.", result)
         mock_transcribe.assert_called_once()
 
+    def test_get_video_transcript_with_explicit_provider_override(self):
+        whisper_result = {
+            "text": "Explicit Whisper Provider.",
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 2.0,
+                    "text": "Explicit Whisper Provider.",
+                    "words": [{"word": "Explicit", "start": 0.0, "end": 1.0, "probability": 0.99}],
+                }
+            ],
+        }
+        mock_config = SimpleNamespace(
+            transcription_provider="assemblyai",
+            whisper_model="base",
+            transcription_language="",
+            assembly_ai_api_key="mock_key",
+        )
+        with patch("src.media.transcription.get_config", return_value=mock_config), patch(
+            "src.media.transcription.transcribe_with_whisper", return_value=whisper_result
+        ) as mock_transcribe:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                video_path = Path(temp_dir) / "sample.mp4"
+                video_path.touch()
+                result = video_utils.get_video_transcript(video_path, transcription_provider="whisper")
+
+        self.assertIn("Explicit Whisper Provider.", result)
+        mock_transcribe.assert_called_once()
+
+    def test_get_video_transcript_auto_mode_fallback_on_assemblyai_error(self):
+        whisper_result = {
+            "text": "Fallback Whisper Result.",
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 2.0,
+                    "text": "Fallback Whisper Result.",
+                    "words": [{"word": "Fallback", "start": 0.0, "end": 1.0, "probability": 0.99}],
+                }
+            ],
+        }
+        mock_config = SimpleNamespace(
+            transcription_provider="auto",
+            whisper_model="base",
+            transcription_language="",
+            assembly_ai_api_key="mock_key",
+        )
+        with patch("src.media.transcription.get_config", return_value=mock_config), patch(
+            "src.media.transcription._get_transcript_with_assemblyai", side_effect=RuntimeError("Quota exceeded")
+        ), patch(
+            "src.media.transcription.transcribe_with_whisper", return_value=whisper_result
+        ) as mock_transcribe:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                video_path = Path(temp_dir) / "sample.mp4"
+                video_path.touch()
+                result = video_utils.get_video_transcript(video_path, transcription_provider="auto")
+
+        self.assertIn("Fallback Whisper Result.", result)
+        mock_transcribe.assert_called_once()
+
     def test_format_transcript_for_analysis_handles_whisper_dict(self):
         whisper_result = {
             "text": "Hello there. General Kenobi.",

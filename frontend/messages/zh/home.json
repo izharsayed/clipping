@@ -71,6 +71,22 @@
       "hint": "保留源视频比例"
     }
   },
+  "transcription": "转录",
+  "transcriptionEngine": "AI 转录引擎",
+  "transcriptionOptions": {
+    "auto": {
+      "label": "自动 / 混合模式",
+      "hint": "AssemblyAI 云端处理，带本地 GPU Whisper 备用"
+    },
+    "whisper": {
+      "label": "本地 GPU (RTX 3050)",
+      "hint": "在 NVIDIA GeForce RTX 3050 上完全离线免费运行"
+    },
+    "assemblyai": {
+      "label": "AssemblyAI 云端",
+      "hint": "极速云端神经网络转录"
+    }
+  },
   "captions": "字幕",
   "noCaptions": "无字幕",
   "broll": "B-roll 素材",

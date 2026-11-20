@@ -5,6 +5,8 @@ export const OUTPUT_FORMATS = ["vertical", "vertical_fit", "vertical_pan", "vert
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 export const LENGTH_WORKFLOWS = ["series", "recap", "trailer"] as const;
 export type LengthWorkflow = (typeof LENGTH_WORKFLOWS)[number];
+export const TRANSCRIPTION_PROVIDERS = ["auto", "assemblyai", "whisper"] as const;
+export type TranscriptionProvider = (typeof TRANSCRIPTION_PROVIDERS)[number];
 
 /** What the create screen remembers between videos. Anything about one video (topic, instructions, part count) stays out. */
 export type CreateSettings = {
@@ -17,6 +19,7 @@ export type CreateSettings = {
   pauseThresholdMs?: number;
   removeFillerWords?: boolean;
   filteredWords?: string;
+  transcriptionProvider?: TranscriptionProvider;
   lengths?: Partial<Record<LengthWorkflow, ClipLength>>;
   advanced?: Partial<Record<Workflow, Record<string, WorkflowSettingValue>>>;
 };
@@ -41,6 +44,9 @@ export function parseCreateSettings(value: unknown): CreateSettings {
   if (typeof value.pauseThresholdMs === "number" && Number.isInteger(value.pauseThresholdMs) && value.pauseThresholdMs >= 250 && value.pauseThresholdMs <= 3000) parsed.pauseThresholdMs = value.pauseThresholdMs;
   if (typeof value.removeFillerWords === "boolean") parsed.removeFillerWords = value.removeFillerWords;
   if (typeof value.filteredWords === "string" && value.filteredWords.length <= 2000) parsed.filteredWords = value.filteredWords;
+  if (typeof value.transcriptionProvider === "string" && TRANSCRIPTION_PROVIDERS.includes(value.transcriptionProvider as TranscriptionProvider)) {
+    parsed.transcriptionProvider = value.transcriptionProvider as TranscriptionProvider;
+  }
   if (isRecord(value.lengths)) {
     const lengths: CreateSettings["lengths"] = {};
     for (const workflow of LENGTH_WORKFLOWS) {

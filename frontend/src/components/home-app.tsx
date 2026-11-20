@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
-  AlertCircle, ArrowRight, ArrowUp, Captions, CaptionsOff, Check, ChevronDown, Clapperboard, Crop, FileVideo, SlidersHorizontal,
+  AlertCircle, ArrowRight, ArrowUp, Captions, CaptionsOff, Check, ChevronDown, Clapperboard, Cpu, Crop, FileVideo, SlidersHorizontal,
   Info, ListOrdered, Loader2, MessageSquareText, Timer, Paperclip, Sparkles, Target, Upload, Link2, Wand2, X,
 } from "lucide-react";
 import { CaptionSizeControl } from "@/components/caption-size-control";
 import { ComposerSettings } from "@/components/composer-settings";
-import { OUTPUT_FORMATS, parseCreateSettings, type CreateSettings, type LengthWorkflow, type OutputFormat } from "@/lib/create-settings";
+import { OUTPUT_FORMATS, TRANSCRIPTION_PROVIDERS, parseCreateSettings, type CreateSettings, type LengthWorkflow, type OutputFormat, type TranscriptionProvider } from "@/lib/create-settings";
 import { VideoSourceIcon } from "@/components/video-source-icon";
 import { availableWorkflows, useWorkflowsInfo, WorkflowPicker } from "@/components/workflow-picker";
 import { changedSettings, invalidSetting, WorkflowAdvancedSettings, type AdvancedValues } from "@/components/workflow-advanced";
@@ -174,6 +174,7 @@ export default function HomeApp() {
   const [pauseThresholdMs, setPauseThresholdMs] = useState("1200");
   const [removeFillerWords, setRemoveFillerWords] = useState(true);
   const [filteredWords, setFilteredWords] = useState("");
+  const [transcriptionProvider, setTranscriptionProvider] = useState<TranscriptionProvider>("auto");
 
   // What to make. Hidden, and always plain highlights, unless the server enables workflows.
   const router = useRouter();
@@ -302,6 +303,7 @@ export default function HomeApp() {
     unlessChanged(setPauseThresholdMs, "1200", saved.pauseThresholdMs === undefined ? undefined : String(saved.pauseThresholdMs));
     unlessChanged(setRemoveFillerWords, true, saved.removeFillerWords);
     unlessChanged(setFilteredWords, "", saved.filteredWords);
+    unlessChanged<TranscriptionProvider>(setTranscriptionProvider, "auto", saved.transcriptionProvider);
     if (saved.lengths) setWorkflowLengths((current) => ({ ...saved.lengths, ...current }));
     if (saved.advanced) setAdvancedByWorkflow((current) => ({ ...saved.advanced, ...current }));
     setSettingsLoaded(true);
@@ -320,6 +322,7 @@ export default function HomeApp() {
     setPauseThresholdMs("1200");
     setRemoveFillerWords(true);
     setFilteredWords("");
+    setTranscriptionProvider("auto");
     setWorkflowLengths({});
     setAdvancedByWorkflow({});
   }
@@ -640,10 +643,11 @@ export default function HomeApp() {
     ...(activeWorkflow === "series" ? [t("parts.picker", { value: partLabel })] : []),
     addSubtitles ? `${t("captions")}: ${captionSummary}` : captionSummary,
     t(`framingOptions.${outputFormat}.label`),
+    t(`transcriptionOptions.${transcriptionProvider}.label`),
   ].join(" · ");
   // Cleanup is on by default, so it isn't counted as a change here; its own section shows what's on.
-  const changedCount = advancedCount + (includeBroll ? 1 : 0);
-  const settingsChanged = changedCount > 0 || selectedLength !== "auto" || partCount !== "auto" || customized || !addSubtitles;
+  const changedCount = advancedCount + (includeBroll ? 1 : 0) + (transcriptionProvider !== "auto" ? 1 : 0);
+  const settingsChanged = changedCount > 0 || selectedLength !== "auto" || partCount !== "auto" || customized || !addSubtitles || transcriptionProvider !== "auto";
 
   // Only what is valid is remembered, so a half-typed number never comes back to block the form.
   const settingsToSave = JSON.stringify({
@@ -656,6 +660,7 @@ export default function HomeApp() {
       cutLongPauses,
       removeFillerWords,
       filteredWords,
+      transcriptionProvider,
       lengths: workflowLengths,
       advanced: Object.fromEntries(Object.entries(advancedByWorkflow).map(([id, values]) => {
         const schema = workflowsInfo?.workflows.find((entry) => entry.id === id)?.settings;
@@ -784,6 +789,9 @@ export default function HomeApp() {
         remove_filler_words: removeFillerWords,
         filtered_words: normalizedFilteredWords,
       };
+      if (transcriptionProvider && transcriptionProvider !== "auto") {
+        request.transcription_provider = transcriptionProvider;
+      }
       // Plain highlights without instructions sends exactly the request it always has.
       const options: WorkflowOptions = {};
       if (activeWorkflow !== "highlights") {
@@ -1271,6 +1279,58 @@ export default function HomeApp() {
                       </button>
                     ))}
                   </div>
+                    </>
+                  ) },
+                  { id: "transcription", label: t("transcription"), icon: <Cpu />, value: t(`transcriptionOptions.${transcriptionProvider}.label`), content: (
+                    <>
+                      <div className="mb-3">
+                        <p className="text-sm font-medium">{t("transcriptionEngine")}</p>
+                        <p className="text-xs text-muted-foreground">Choose between cloud neural processing or offline RTX 3050 GPU.</p>
+                      </div>
+                      <div className="space-y-2" role="radiogroup" aria-label={t("transcriptionEngine")}>
+                        {TRANSCRIPTION_PROVIDERS.map((provider) => (
+                          <button
+                            key={provider}
+                            type="button"
+                            role="radio"
+                            aria-checked={transcriptionProvider === provider}
+                            onClick={() => setTranscriptionProvider(provider)}
+                            className={cn(
+                              "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-accent",
+                              transcriptionProvider === provider && "border-foreground ring-1 ring-foreground"
+                            )}
+                          >
+                            <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-primary text-primary">
+                              {transcriptionProvider === provider && (
+                                <div className="size-2 rounded-full bg-primary" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{t(`transcriptionOptions.${provider}.label`)}</span>
+                                {provider === "auto" && (
+                                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                    Hybrid
+                                  </span>
+                                )}
+                                {provider === "whisper" && (
+                                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                    Local GPU
+                                  </span>
+                                )}
+                                {provider === "assemblyai" && (
+                                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                                    Cloud API
+                                  </span>
+                                )}
+                              </div>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {t(`transcriptionOptions.${provider}.hint`)}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </>
                   ) },
                   { id: "cleanup", label: t("cleanup"), icon: <Wand2 />, count: cleanupCount, content: (

@@ -71,6 +71,22 @@
       "hint": "Keep the source aspect ratio"
     }
   },
+  "transcription": "Transcription",
+  "transcriptionEngine": "AI Transcription Engine",
+  "transcriptionOptions": {
+    "auto": {
+      "label": "Auto / Hybrid",
+      "hint": "AssemblyAI Cloud with Local GPU Whisper fallback"
+    },
+    "whisper": {
+      "label": "Local GPU (RTX 3050)",
+      "hint": "Free & offline on NVIDIA GeForce RTX 3050"
+    },
+    "assemblyai": {
+      "label": "AssemblyAI Cloud",
+      "hint": "Fastest cloud neural transcription"
+    }
+  },
   "captions": "Captions",
   "noCaptions": "No captions",
   "broll": "B-roll",

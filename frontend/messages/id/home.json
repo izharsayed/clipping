@@ -71,6 +71,22 @@
       "hint": "Pertahankan rasio aspek sumber"
     }
   },
+  "transcription": "Transkripsi",
+  "transcriptionEngine": "Mesin Transkripsi AI",
+  "transcriptionOptions": {
+    "auto": {
+      "label": "Otomatis / Hibrida",
+      "hint": "AssemblyAI Cloud dengan cadangan Whisper GPU Lokal"
+    },
+    "whisper": {
+      "label": "GPU Lokal (RTX 3050)",
+      "hint": "Gratis & offline di NVIDIA GeForce RTX 3050"
+    },
+    "assemblyai": {
+      "label": "AssemblyAI Cloud",
+      "hint": "Transkripsi neural cloud tercepat"
+    }
+  },
   "captions": "Caption",
   "noCaptions": "Tanpa caption",
   "broll": "B-roll",

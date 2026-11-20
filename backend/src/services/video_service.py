@@ -785,10 +785,11 @@ class VideoService:
         video_path: Path,
         processing_mode: str = "balanced",
         source_url: Optional[str] = None,
+        transcription_provider: Optional[str] = None,
     ) -> str:
         """
         Generate transcript from video using the configured provider
-        (assemblyai, whisper, or youtube_captions).
+        (assemblyai, whisper, youtube_captions, or auto).
         Runs in thread pool to avoid blocking.
         """
         logger.info(f"Generating transcript for: {video_path}")
@@ -796,11 +797,12 @@ class VideoService:
         runtime_config = get_config()
         # The fast-mode model selector is only meaningful for AssemblyAI; the
         # other providers ignore it and would otherwise silently change behaviour.
-        if processing_mode == "fast" and runtime_config.transcription_provider == "assemblyai":
+        effective_provider = transcription_provider or runtime_config.transcription_provider
+        if processing_mode == "fast" and effective_provider in {"assemblyai", "auto"}:
             speech_model = runtime_config.fast_mode_transcript_model
 
         transcript = await run_in_thread(
-            get_video_transcript, video_path, speech_model, source_url
+            get_video_transcript, video_path, speech_model, source_url, transcription_provider
         )
         logger.info(f"Transcript generated: {len(transcript)} characters")
         return transcript
@@ -1337,6 +1339,7 @@ class VideoService:
         clip_length: str = "auto",
         checkpoint: Optional[Dict[str, Any]] = None,
         checkpoint_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+        transcription_provider: Optional[str] = None,
         *,
         workflow_spec: Optional[WorkflowSpec] = None,
         plan_cache: Optional[PlanCache] = None,
@@ -1541,6 +1544,7 @@ class VideoService:
                     video_path,
                     processing_mode=processing_mode,
                     source_url=url if source_type == "youtube" else None,
+                    transcription_provider=transcription_provider,
                 )
                 if checkpoint.get("analysis") or checkpoint.get("workflow_final"):
                     # Never combine new word timings with an old clip plan.

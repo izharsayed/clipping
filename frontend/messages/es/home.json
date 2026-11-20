@@ -71,6 +71,22 @@
       "hint": "Conserva la proporción del video original"
     }
   },
+  "transcription": "Transcripción",
+  "transcriptionEngine": "Motor de transcripción IA",
+  "transcriptionOptions": {
+    "auto": {
+      "label": "Auto / Híbrido",
+      "hint": "AssemblyAI Cloud con respaldo de Whisper en GPU local"
+    },
+    "whisper": {
+      "label": "GPU local (RTX 3050)",
+      "hint": "Gratis y sin conexión en NVIDIA GeForce RTX 3050"
+    },
+    "assemblyai": {
+      "label": "AssemblyAI Cloud",
+      "hint": "Transcripción neuronal en la nube más rápida"
+    }
+  },
   "captions": "Subtítulos",
   "noCaptions": "Sin subtítulos",
   "broll": "B-roll",

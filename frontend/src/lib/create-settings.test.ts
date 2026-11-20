@@ -14,6 +14,7 @@ describe("parseCreateSettings", () => {
       pauseThresholdMs: 800,
       removeFillerWords: false,
       filteredWords: "um",
+      transcriptionProvider: "auto",
       lengths: { series: "long" },
       advanced: { trailer: { spoilers: "strict", target_seconds: 40, hook_title: false } },
     };

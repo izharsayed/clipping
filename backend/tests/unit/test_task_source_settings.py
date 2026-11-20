@@ -68,6 +68,24 @@ def test_merge_task_source_metadata_backfills_required_fields():
     }
 
 
+def test_merge_task_source_metadata_accepts_transcription_provider():
+    merged = _merge_task_source_metadata(
+        {},
+        source_url="upload://demo.mp4",
+        source_type="video_url",
+        transcription_provider="whisper",
+    )
+    assert merged["transcription_provider"] == "whisper"
+
+    merged_auto = _merge_task_source_metadata(
+        {},
+        source_url="upload://demo.mp4",
+        source_type="video_url",
+        transcription_provider="auto",
+    )
+    assert merged_auto["transcription_provider"] == "auto"
+
+
 def test_merge_task_source_metadata_preserves_existing_render_settings():
     merged = _merge_task_source_metadata(
         {

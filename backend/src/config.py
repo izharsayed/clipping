@@ -103,14 +103,14 @@ class Config:
             os.getenv("APIFY_LONG_VIDEO_SECONDS", "1800")
         )
 
-        self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "5400"))
+        self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "15000"))
         # YouTube sources can be longer on paid tiers. Uploads continue to use
         # max_video_duration regardless of plan.
         self.pro_youtube_max_video_duration = int(
             os.getenv("PRO_YOUTUBE_MAX_VIDEO_DURATION", str(self.max_video_duration))
         )
         self.scale_youtube_max_video_duration = int(
-            os.getenv("SCALE_YOUTUBE_MAX_VIDEO_DURATION", "10800")
+            os.getenv("SCALE_YOUTUBE_MAX_VIDEO_DURATION", "15000")
         )
         # 4 GB fits a full-length upload (the duration cap is 90 minutes) at a
         # normal 1080p bitrate. Larger files make transcription, storage, and
@@ -173,7 +173,7 @@ class Config:
         # "processing" forever. Default comfortably exceeds arq's job_timeout so
         # a legitimately long job is never falsely swept into "error".
         self.processing_task_timeout_seconds = int(
-            os.getenv("PROCESSING_TASK_TIMEOUT_SECONDS", "14400")
+            os.getenv("PROCESSING_TASK_TIMEOUT_SECONDS", "21600")
         )
         # One account can hold at most this many video renders at once. The
         # worker has a handful of CPU slots, and one render can run for hours,
@@ -473,9 +473,9 @@ class Config:
     @staticmethod
     def _normalize_transcription_provider(value: str | None) -> str:
         normalized = (value or "").strip().lower().replace("-", "_")
-        if normalized in ("whisper", "youtube_captions"):
+        if normalized in ("whisper", "youtube_captions", "assemblyai"):
             return normalized
-        return "assemblyai"
+        return "auto"
 
     @staticmethod
     def _normalize_transcription_language(value: str | None) -> str:

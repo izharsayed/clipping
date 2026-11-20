@@ -376,6 +376,7 @@ def _merge_task_source_metadata(
     output_format: Any = None,
     add_subtitles: Any = None,
     cleanup_settings: Dict[str, Any] | None = None,
+    transcription_provider: Any = None,
 ) -> Dict[str, Any]:
     merged = dict(existing or {})
 
@@ -389,6 +390,10 @@ def _merge_task_source_metadata(
         merged["add_subtitles"] = add_subtitles
     if cleanup_settings:
         merged.update(cleanup_settings)
+    if transcription_provider:
+        norm = str(transcription_provider).strip().lower().replace("-", "_")
+        if norm in {"auto", "assemblyai", "whisper", "youtube_captions"}:
+            merged["transcription_provider"] = norm
 
     return merged
 
@@ -687,6 +692,11 @@ async def _create_task(request: Request, db: AsyncSession, attempt: SourceAttemp
         raise HTTPException(status_code=error.status, detail=error.to_detail())
     workflow_options = workflow_spec.options.to_json()
     cleanup_settings = new_task_cleanup_settings(data)
+    transcription_provider = data.get("transcription_provider")
+    if transcription_provider:
+        transcription_provider = str(transcription_provider).strip().lower().replace("-", "_")
+        if transcription_provider not in {"auto", "assemblyai", "whisper", "youtube_captions"}:
+            transcription_provider = "auto"
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -702,6 +712,7 @@ async def _create_task(request: Request, db: AsyncSession, attempt: SourceAttemp
         "add_subtitles": add_subtitles,
         "clip_length": clip_length,
         "cleanup_settings": cleanup_settings,
+        "transcription_provider": transcription_provider,
     }
     if not workflow_spec.legacy:
         # Plain highlights keep their existing key. The key is a hash, so topic
@@ -847,6 +858,7 @@ async def _create_task(request: Request, db: AsyncSession, attempt: SourceAttemp
                         output_format=output_format,
                         add_subtitles=add_subtitles,
                         cleanup_settings=cleanup_settings,
+                        transcription_provider=transcription_provider,
                     ),
                     db=db,
                 )

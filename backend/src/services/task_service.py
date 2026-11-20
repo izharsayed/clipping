@@ -530,6 +530,8 @@ class TaskService(ClipEditingMixin):
             # What to make is read from the task, so queued jobs and resumes
             # honour it with the ARQ job arguments unchanged.
             task_row = await self.task_repo.get_task_by_id(self.db, task_id) or {}
+            task_metadata = await self.task_repo.load_source_metadata(self.db, task_id) or {}
+            transcription_provider = task_metadata.get("transcription_provider")
             spec = workflow_spec_from_task(task_row, clip_length)
             prior_outputs = bool(await self.clip_repo.get_clips_by_task(self.db, task_id))
             # New tasks already have an atomic acceptance charge. Recover queued
@@ -684,6 +686,7 @@ class TaskService(ClipEditingMixin):
                 clip_length=clip_length,
                 checkpoint=checkpoint,
                 checkpoint_callback=save_checkpoint,
+                transcription_provider=transcription_provider,
                 **workflow_kwargs,
             )
             stage_timings["pipeline_seconds"] = round(
