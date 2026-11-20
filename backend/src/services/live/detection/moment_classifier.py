@@ -88,10 +88,13 @@ class MomentClassifier:
         game_or_category: Optional[str] = None,
         audio_spike_ratio: float = 1.0,
         radar_mode: str = "Balanced Hype",
+        chat_spike_ratio: float = 1.0,
+        chat_top_emotes: Optional[list[str]] = None,
+        chat_laughter_ratio: float = 0.0,
     ) -> MomentClassification:
         """Evaluate a candidate moment and return structured decision."""
-        # If there is literally no spoken words and spike is modest, reject early
-        if not transcript.strip() and audio_spike_ratio < 4.0:
+        # If there is literally no spoken words, no chat reaction, and spike is modest, reject early
+        if not transcript.strip() and audio_spike_ratio < 4.0 and chat_spike_ratio < 3.0:
             return MomentClassification(
                 is_clip_worthy=False,
                 category="loud_reaction",
@@ -104,13 +107,24 @@ class MomentClassifier:
             )
 
         agent = self._get_agent()
+
+        chat_context = ""
+        if chat_spike_ratio > 1.2 or (chat_top_emotes and len(chat_top_emotes) > 0):
+            emotes_str = ", ".join(chat_top_emotes) if chat_top_emotes else "General"
+            chat_context = (
+                f"Audience Live Chat Reaction: {chat_spike_ratio:.1f}x velocity burst "
+                f"({int(chat_laughter_ratio * 100)}% laughter/hype), Top Emotes: {emotes_str}\n"
+            )
+
         prompt = (
             f"Streamer: {streamer_name}\n"
             f"Game/Category: {game_or_category or 'General'}\n"
             f"Radar Focus Mode: {radar_mode}\n"
             f"Vocal Excitement Spike: {audio_spike_ratio}x baseline\n"
+            f"{chat_context}"
             f"Dialogue Transcript:\n\"\"\"{transcript}\"\"\"\n\n"
             "Analyze whether this moment is entertaining, viral, and worthy of a short-form clip. "
+            "Consider both the spoken dialogue and audience live chat reaction. "
             "Evaluate hook strength in the opening lines and ensure the moment has a payoff or punchline."
         )
 

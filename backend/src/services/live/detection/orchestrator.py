@@ -10,6 +10,7 @@ from uuid import uuid4
 from .audio_energy import AudioEnergyDetector, AudioEnergyResult
 from .transcription import RollingTranscriber
 from .moment_classifier import MomentClassifier, MomentClassification
+from .chat_velocity import ChatVelocityTracker, ChatVelocityResult, TwitchChatMonitor
 from ..capture.rolling_buffer import RollingBuffer, SegmentInfo
 from ....database import AsyncSessionLocal
 from ....models import MonitoredChannel, LiveStreamSession, LiveClipMoment
@@ -114,10 +115,18 @@ class LiveMomentOrchestrator:
         self.energy_detector = AudioEnergyDetector()
         self.transcriber = RollingTranscriber(whisper_model="base")
         self.classifier = MomentClassifier()
+        self.chat_tracker = ChatVelocityTracker()
+        self.chat_monitor: Optional[TwitchChatMonitor] = None
 
         self._last_clip_time: float = 0.0
         self._processing_moment: bool = False
         self._last_settings_refresh: float = 0.0
+
+    async def stop(self) -> None:
+        """Stop background monitors such as live chat listener."""
+        if self.chat_monitor:
+            await self.chat_monitor.stop()
+            self.chat_monitor = None
 
     async def _sync_channel_settings(self) -> None:
         """Fetch channel's configured virality threshold and radar mode to tune detector sensitivity."""
@@ -146,6 +155,14 @@ class LiveMomentOrchestrator:
                         mode = cat.split(":", 1)[1]
 
                 self.energy_detector.set_sensitivity(threshold, mode)
+
+                # Initialize live chat monitor for Twitch channels
+                if channel.platform == "twitch" and channel.channel_identifier and not self.chat_monitor:
+                    self.chat_monitor = TwitchChatMonitor(
+                        channel_identifier=channel.channel_identifier,
+                        tracker=self.chat_tracker,
+                    )
+                    asyncio.create_task(self.chat_monitor.start())
         except Exception as e:
             logger.debug("Could not refresh channel settings for %s: %s", self.channel_id, e)
 
@@ -154,17 +171,35 @@ class LiveMomentOrchestrator:
         try:
             await self._sync_channel_settings()
             energy_res: AudioEnergyResult = await self.energy_detector.analyze_segment(segment.file_path)
+            chat_res: ChatVelocityResult = self.chat_tracker.get_current_velocity()
 
             now = time.time()
-            if not energy_res.is_spike:
+            # Multimodal viral decision:
+            # 1. Vocal Excitement Spike (from audio bandpass analysis)
+            # 2. Viral Chat Surge (extreme chat messages/sec + laughter/hype emotes)
+            is_viral_trigger = False
+            trigger_reason = ""
+
+            if energy_res.is_spike and chat_res.is_chat_spike:
+                is_viral_trigger = True
+                trigger_reason = f"Dual Trigger: Vocal spike ({energy_res.spike_ratio}x) + Chat surge ({chat_res.spike_ratio}x)"
+            elif energy_res.is_spike:
+                is_viral_trigger = True
+                trigger_reason = f"Vocal Excitement Spike ({energy_res.spike_ratio}x)"
+            elif chat_res.is_chat_spike and (chat_res.laughter_ratio >= 0.15 or chat_res.hype_ratio >= 0.15):
+                emotes_str = ", ".join(chat_res.top_emotes[:3]) if chat_res.top_emotes else "Viral"
+                is_viral_trigger = True
+                trigger_reason = f"Audience Chat Surge ({chat_res.spike_ratio}x, {emotes_str})"
+
+            if not is_viral_trigger:
                 return
 
             if (now - self._last_clip_time) < self.cooldown_seconds:
                 logger.debug(
-                    "Spike detected (%.1fx) for %s but within cooldown (%.1fs remaining)",
-                    energy_res.spike_ratio,
+                    "Moment candidate for %s within cooldown (%.1fs remaining): %s",
                     self.channel_id,
                     self.cooldown_seconds - (now - self._last_clip_time),
+                    trigger_reason,
                 )
                 return
 
@@ -172,19 +207,24 @@ class LiveMomentOrchestrator:
                 return
 
             logger.info(
-                "🔥 Excitement spike detected (%.1fx baseline) on channel %s at stream time %.1fs!",
-                energy_res.spike_ratio,
+                "🔥 Moment candidate triggered for channel %s at stream time %.1fs! Reason: %s",
                 self.channel_id,
                 segment.start_time,
+                trigger_reason,
             )
 
             # Process candidate in background task to avoid blocking the segment watcher
-            asyncio.create_task(self._evaluate_and_clip(segment, energy_res))
+            asyncio.create_task(self._evaluate_and_clip(segment, energy_res, chat_res))
 
         except Exception as e:
             logger.warning("Error analyzing segment %s: %s", segment.file_path.name, e)
 
-    async def _evaluate_and_clip(self, segment: SegmentInfo, energy: AudioEnergyResult) -> None:
+    async def _evaluate_and_clip(
+        self,
+        segment: SegmentInfo,
+        energy: AudioEnergyResult,
+        chat: Optional[ChatVelocityResult] = None,
+    ) -> None:
         """Extract candidate window, transcribe, classify with AI, and render clip."""
         self._processing_moment = True
         try:
@@ -236,12 +276,19 @@ class LiveMomentOrchestrator:
                 transcript_text = transcript_data.get("text", "")
 
                 # 3. Classify with AI agent
+                chat_spike = chat.spike_ratio if chat else 1.0
+                chat_emotes = chat.top_emotes if chat else []
+                chat_laugh = chat.laughter_ratio if chat else 0.0
+
                 classification: MomentClassification = await self.classifier.classify_moment(
                     transcript=transcript_text,
                     streamer_name=channel.display_name,
                     game_or_category=session.game_name,
                     audio_spike_ratio=energy.spike_ratio,
                     radar_mode=self.energy_detector.current_mode,
+                    chat_spike_ratio=chat_spike,
+                    chat_top_emotes=chat_emotes,
+                    chat_laughter_ratio=chat_laugh,
                 )
 
                 logger.info(
@@ -329,6 +376,10 @@ class LiveMomentOrchestrator:
                 final_end_seconds = min(current_end, candidate_start + optimal_end)
 
                 # 5. Save LiveClipMoment record
+                reason_full = classification.reason
+                if chat and chat.is_chat_spike and chat.top_emotes:
+                    reason_full = f"{reason_full} (Audience Chat: {', '.join(chat.top_emotes[:3])} surge)"
+
                 moment = LiveClipMoment(
                     session_id=session.id,
                     start_seconds=round(final_start_seconds, 2),
@@ -338,7 +389,7 @@ class LiveMomentOrchestrator:
                     audio_energy_score=round(energy.spike_ratio, 2),
                     description=classification.description,
                     transcript=transcript_text,
-                    reason=classification.reason,
+                    reason=reason_full,
                     status="pending",
                 )
                 db.add(moment)

@@ -213,6 +213,12 @@ class LiveStreamCaptureEngine:
                     pass
             self._process = None
 
+        if getattr(self, "orchestrator", None):
+            try:
+                await self.orchestrator.stop()
+            except Exception:
+                pass
+
         logger.info("Stream capture stopped for channel %s", self.channel_id)
 
     async def cleanup(self) -> None:
