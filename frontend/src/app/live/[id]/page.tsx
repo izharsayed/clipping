@@ -16,6 +16,7 @@ import {
   Flame,
   Radio,
   RefreshCw,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Tv,
@@ -28,6 +29,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCopyText } from "@/lib/copy-text";
 
 type ChannelDetails = {
@@ -121,6 +140,121 @@ export default function StreamerPreviewPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [hostname, setHostname] = useState<string>("localhost");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Clipping & AI Specifications state
+  const [specsModalOpen, setSpecsModalOpen] = useState(false);
+  const [specMinDuration, setSpecMinDuration] = useState(20);
+  const [specMaxDuration, setSpecMaxDuration] = useState(60);
+  const [specAutoPublish, setSpecAutoPublish] = useState(false);
+  const [specMaxClips, setSpecMaxClips] = useState(10);
+  const [specReframing, setSpecReframing] = useState("9:16 Vertical");
+  const [specMetadataStyle, setSpecMetadataStyle] = useState("PeakCut AI");
+  const [savingSpecs, setSavingSpecs] = useState(false);
+
+  const currentReframing = useMemo(() => {
+    const match = channel?.preferred_categories?.find((c) => c.startsWith("reframe:"));
+    return match ? match.replace("reframe:", "") : "9:16 Vertical";
+  }, [channel?.preferred_categories]);
+
+  const currentMetadataStyle = useMemo(() => {
+    const match = channel?.preferred_categories?.find((c) => c.startsWith("meta:"));
+    return match ? match.replace("meta:", "") : "PeakCut AI";
+  }, [channel?.preferred_categories]);
+
+  const openSpecsModal = useCallback(() => {
+    if (!channel) return;
+    setSpecMinDuration(channel.min_clip_duration || 20);
+    setSpecMaxDuration(channel.max_clip_duration || 60);
+    setSpecAutoPublish(Boolean(channel.auto_publish));
+    setSpecMaxClips(channel.max_clips_per_stream || 10);
+    setSpecReframing(currentReframing);
+    setSpecMetadataStyle(currentMetadataStyle);
+    setSpecsModalOpen(true);
+  }, [channel, currentReframing, currentMetadataStyle]);
+
+  const applyPreset = (min: number, max: number) => {
+    setSpecMinDuration(min);
+    setSpecMaxDuration(max);
+  };
+
+  const handleToggleAutoPublish = async () => {
+    if (!channel) return;
+    const nextValue = !channel.auto_publish;
+
+    // Optimistically update
+    setChannel((prev) => (prev ? { ...prev, auto_publish: nextValue } : prev));
+
+    try {
+      const res = await fetch(`/api/live/channels/${channelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_publish: nextValue }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setChannel((prev) => (prev ? { ...prev, ...updated } : prev));
+        toast.success(
+          nextValue
+            ? "Auto-publish enabled for approved moments"
+            : "Auto-publish disabled (Manual Review)"
+        );
+      } else {
+        setChannel((prev) => (prev ? { ...prev, auto_publish: !nextValue } : prev));
+        toast.error("Failed to update auto-publish");
+      }
+    } catch {
+      setChannel((prev) => (prev ? { ...prev, auto_publish: !nextValue } : prev));
+      toast.error("Network error updating auto-publish");
+    }
+  };
+
+  const handleSaveSpecs = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!channel) return;
+    if (specMinDuration > specMaxDuration) {
+      toast.error("Min clip duration cannot exceed max duration");
+      return;
+    }
+    setSavingSpecs(true);
+
+    const existingCategories = (channel.preferred_categories || []).filter(
+      (c) => !c.startsWith("reframe:") && !c.startsWith("meta:")
+    );
+    const updatedCategories = [
+      ...existingCategories,
+      `reframe:${specReframing}`,
+      `meta:${specMetadataStyle}`,
+    ];
+
+    try {
+      const res = await fetch(`/api/live/channels/${channelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          min_clip_duration: specMinDuration,
+          max_clip_duration: specMaxDuration,
+          auto_publish: specAutoPublish,
+          max_clips_per_stream: specMaxClips,
+          preferred_categories: updatedCategories,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setChannel((prev) => (prev ? { ...prev, ...data } : prev));
+        toast.success("Clipping specifications updated successfully!");
+        setSpecsModalOpen(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || "Failed to update specifications");
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error saving specifications");
+    } finally {
+      setSavingSpecs(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -591,46 +725,131 @@ export default function StreamerPreviewPage() {
 
               {/* Engine Clipping Rules */}
               <Card className="border bg-card p-4 space-y-3">
-                <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
-                  <Sparkles className="size-3.5 text-primary" />
-                  Clipping & AI Specifications
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                    <Sparkles className="size-3.5 text-primary" />
+                    Clipping & AI Specifications
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openSpecsModal()}
+                    className="h-6 text-[11px] px-2 gap-1 rounded border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                  >
+                    <SlidersHorizontal className="size-3" />
+                    Configure
+                  </Button>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs pt-1">
-                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border/40">
-                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
-                      Clip Length
-                    </span>
-                    <span className="font-bold text-foreground">
-                      {channel.min_clip_duration}s – {channel.max_clip_duration}s
-                    </span>
-                    <span className="text-[10px] text-primary block mt-0.5 font-medium">
-                      AI Dynamic & Configurable
-                    </span>
+                  {/* Clip Length Tile */}
+                  <button
+                    type="button"
+                    onClick={() => openSpecsModal()}
+                    className="p-2.5 rounded-lg bg-muted/40 border border-border/40 text-left hover:border-primary/50 hover:bg-muted/60 transition cursor-pointer group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                        Clip Length
+                      </span>
+                      <SlidersHorizontal className="size-3 text-muted-foreground/60 group-hover:text-primary transition" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-foreground">
+                        {channel.min_clip_duration}s – {channel.max_clip_duration}s
+                      </span>
+                      <span className="text-[10px] text-primary block mt-0.5 font-medium">
+                        AI Dynamic & Configurable
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Auto-Publish Tile with Inline Switch */}
+                  <div
+                    onClick={() => handleToggleAutoPublish()}
+                    className="p-2.5 rounded-lg bg-muted/40 border border-border/40 flex flex-col justify-between hover:border-primary/50 hover:bg-muted/60 transition cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Toggle Auto-Publish"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleToggleAutoPublish();
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                        Auto-Publish
+                      </span>
+                      <Switch
+                        checked={channel.auto_publish}
+                        onCheckedChange={() => handleToggleAutoPublish()}
+                        className="scale-75 origin-right"
+                        aria-label="Auto-publish switch"
+                      />
+                    </div>
+                    <div>
+                      <span className="font-bold text-foreground">
+                        {channel.auto_publish ? "Enabled" : "Manual Review"}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5 font-medium">
+                        {channel.auto_publish ? "Direct to socials" : "Click to enable"}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border/40">
-                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
-                      Auto-Publish
-                    </span>
-                    <span className="font-bold text-foreground">
-                      {channel.auto_publish ? "Enabled" : "Manual Review"}
-                    </span>
-                  </div>
+                  {/* Reframing Tile */}
+                  <button
+                    type="button"
+                    onClick={() => openSpecsModal()}
+                    className="p-2.5 rounded-lg bg-muted/40 border border-border/40 text-left hover:border-primary/50 hover:bg-muted/60 transition cursor-pointer group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                        Reframing
+                      </span>
+                      <SlidersHorizontal className="size-3 text-muted-foreground/60 group-hover:text-primary transition" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-foreground">{currentReframing}</span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5 font-medium">
+                        AI Focus & Framing
+                      </span>
+                    </div>
+                  </button>
 
-                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border/40">
-                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
-                      Reframing
-                    </span>
-                    <span className="font-bold text-foreground">9:16 Vertical</span>
-                  </div>
+                  {/* Post Metadata Tile */}
+                  <button
+                    type="button"
+                    onClick={() => openSpecsModal()}
+                    className="p-2.5 rounded-lg bg-muted/40 border border-border/40 text-left hover:border-primary/50 hover:bg-muted/60 transition cursor-pointer group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                        Post Metadata
+                      </span>
+                      <SlidersHorizontal className="size-3 text-muted-foreground/60 group-hover:text-primary transition" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-foreground">{currentMetadataStyle}</span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5 font-medium">
+                        Viral Hooks & Captions
+                      </span>
+                    </div>
+                  </button>
+                </div>
 
-                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border/40">
-                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
-                      Post Metadata
-                    </span>
-                    <span className="font-bold text-foreground">PeakCut AI</span>
-                  </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/30">
+                  <span>Stream Quota: <strong className="text-foreground font-semibold">{channel.max_clips_per_stream || 10} clips</strong> / stream</span>
+                  <button
+                    type="button"
+                    onClick={() => openSpecsModal()}
+                    className="text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    Configure rules →
+                  </button>
                 </div>
               </Card>
             </div>
@@ -851,6 +1070,174 @@ export default function StreamerPreviewPage() {
             </Card>
           </div>
         </div>
+
+        {/* Clipping & AI Specifications Configuration Dialog */}
+        <Dialog open={specsModalOpen} onOpenChange={setSpecsModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" />
+                Clipping & AI Specifications
+              </DialogTitle>
+              <DialogDescription>
+                Tune live hype detection thresholds, clip durations, reframing style, and publishing rules for {channel.display_name}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSaveSpecs} className="space-y-4 pt-2">
+              {/* Quick Presets */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Quick Duration Presets</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    variant={specMinDuration === 15 && specMaxDuration === 30 ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => applyPreset(15, 30)}
+                  >
+                    Shorts (15–30s)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={specMinDuration === 20 && specMaxDuration === 60 ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => applyPreset(20, 60)}
+                  >
+                    Balanced (20–60s)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={specMinDuration === 30 && specMaxDuration === 90 ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => applyPreset(30, 90)}
+                  >
+                    Longform (30–90s)
+                  </Button>
+                </div>
+              </div>
+
+              {/* Min and Max Duration Sliders */}
+              <div className="grid grid-cols-2 gap-4 p-3 rounded-lg bg-muted/40 border border-border/40">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Min Duration</Label>
+                    <span className="text-xs font-semibold text-primary">{specMinDuration}s</span>
+                  </div>
+                  <Slider
+                    aria-label="Min clip duration"
+                    value={[specMinDuration]}
+                    min={10}
+                    max={45}
+                    step={5}
+                    onValueChange={([val]) => {
+                      setSpecMinDuration(val);
+                      if (val > specMaxDuration) setSpecMaxDuration(val);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Max Duration</Label>
+                    <span className="text-xs font-semibold text-primary">{specMaxDuration}s</span>
+                  </div>
+                  <Slider
+                    aria-label="Max clip duration"
+                    value={[specMaxDuration]}
+                    min={20}
+                    max={90}
+                    step={5}
+                    onValueChange={([val]) => {
+                      setSpecMaxDuration(val);
+                      if (val < specMinDuration) setSpecMinDuration(val);
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Max Clips Per Stream */}
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/40 border border-border/40">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Max Clips Per Stream</Label>
+                  <span className="text-xs font-semibold text-primary">{specMaxClips} clips</span>
+                </div>
+                <Slider
+                  aria-label="Max clips per stream"
+                  value={[specMaxClips]}
+                  min={1}
+                  max={30}
+                  step={1}
+                  onValueChange={([val]) => setSpecMaxClips(val)}
+                />
+                <span className="text-[11px] text-muted-foreground block">
+                  Limits how many highlight clips the AI engine will cut per broadcast session.
+                </span>
+              </div>
+
+              {/* Reframing Style */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Reframing Layout</Label>
+                <Select value={specReframing} onValueChange={setSpecReframing}>
+                  <SelectTrigger className="w-full text-xs">
+                    <SelectValue placeholder="Select layout" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="9:16 Vertical">9:16 Vertical (Single Subject / Face-Tracked)</SelectItem>
+                    <SelectItem value="9:16 Split Screen">9:16 Split Screen (Facecam Top + Gameplay Center)</SelectItem>
+                    <SelectItem value="16:9 Landscape">16:9 Landscape (Original Wide Highlight)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Post Metadata Style */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Post Metadata & Copy Generation</Label>
+                <Select value={specMetadataStyle} onValueChange={setSpecMetadataStyle}>
+                  <SelectTrigger className="w-full text-xs">
+                    <SelectValue placeholder="Select style" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PeakCut AI">PeakCut AI (Balanced High-Virality Hook & Hashtags)</SelectItem>
+                    <SelectItem value="Viral Hooks">Viral Hooks (Curiosity-Gap Punchy 1-Liners)</SelectItem>
+                    <SelectItem value="Story Arc">Story Arc (Detailed Narrative & Context)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Auto-Publish Switch */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border border-border/40">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium">Auto-Publish to Channels</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Skip manual review and automatically publish newly rendered viral moments.
+                  </p>
+                </div>
+                <Switch
+                  checked={specAutoPublish}
+                  onCheckedChange={setSpecAutoPublish}
+                  aria-label="Auto-publish switch in modal"
+                />
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSpecsModalOpen(false)}
+                  disabled={savingSpecs}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={savingSpecs}>
+                  {savingSpecs ? "Saving..." : "Save Specifications"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

@@ -69,8 +69,16 @@ const mockMoments = [
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
+  vi.stubGlobal(
     "fetch",
-    vi.fn().mockImplementation(async (url: string) => {
+    vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.includes("/api/live/channels/ch-123/clip-now")) {
         return new Response(
           JSON.stringify({
@@ -88,6 +96,10 @@ beforeEach(() => {
         return new Response(JSON.stringify({ id: "moment-1", status: "approved" }), { status: 200 });
       }
       if (url.includes("/api/live/channels/ch-123")) {
+        if (init?.method === "PATCH") {
+          const body = init?.body ? JSON.parse(init.body as string) : {};
+          return new Response(JSON.stringify({ ...mockChannel, ...body }), { status: 200 });
+        }
         return new Response(JSON.stringify(mockChannel), { status: 200 });
       }
       if (url.includes("/api/live/moments")) {
@@ -159,5 +171,54 @@ it("approves pending moment clip", async () => {
   });
   await waitFor(() => {
     expect(toast.success).toHaveBeenCalledWith("Clip approved for publishing!");
+  });
+});
+
+it("toggles auto-publish setting inline from the card", async () => {
+  render(<StreamerPreviewPage />);
+
+  expect(await screen.findByText("Manual Review")).toBeInTheDocument();
+
+  const autoPublishTile = screen.getByRole("button", { name: /Toggle Auto-Publish/i });
+  fireEvent.click(autoPublishTile);
+
+  await waitFor(() => {
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/live/channels/ch-123",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ auto_publish: true }),
+      })
+    );
+  });
+  await waitFor(() => {
+    expect(toast.success).toHaveBeenCalledWith("Auto-publish enabled for approved moments");
+  });
+});
+
+it("opens specifications configuration modal and saves updated clipping rules", async () => {
+  render(<StreamerPreviewPage />);
+
+  const configBtn = await screen.findByRole("button", { name: /^Configure$/i });
+  fireEvent.click(configBtn);
+
+  expect(await screen.findByRole("heading", { name: "Clipping & AI Specifications" })).toBeInTheDocument();
+
+  const presetBtn = screen.getByRole("button", { name: /Shorts \(15–30s\)/i });
+  fireEvent.click(presetBtn);
+
+  const saveBtn = screen.getByRole("button", { name: /Save Specifications/i });
+  fireEvent.click(saveBtn);
+
+  await waitFor(() => {
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/live/channels/ch-123",
+      expect.objectContaining({
+        method: "PATCH",
+      })
+    );
+  });
+  await waitFor(() => {
+    expect(toast.success).toHaveBeenCalledWith("Clipping specifications updated successfully!");
   });
 });

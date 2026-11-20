@@ -4,6 +4,10 @@ What changed in SupoClip for people using the product. Newest dates are first.
 
 Add a line here when a pull request changes something a user can see. Use **New**, **Improved**, **Fixed**, or **Under the hood**, describe the change in plain language, and link the pull request. Skip internal-only work, or fold it into one **Under the hood** line. Do not include customer names, email addresses, user IDs, or anything else private.
 
+## 2026-11-20
+
+- **New:** The Clipping & AI Specifications card in the Live Streamer Studio (`/live/[id]`) is now fully interactive. Streamers can configure min/max clip length bounds with quick presets (Shorts, Balanced, Longform), adjust max clips quota per stream, switch between 9:16 Vertical, 9:16 Split Screen, or 16:9 Landscape reframing layouts, choose PeakCut AI copy generation styles, and toggle automatic social publishing with one click. ([#457](https://github.com/FujiwaraChoki/supoclip/pull/457))
+
 ## 2026-11-19
 
 - **Fixed:** Resolved an issue where legacy or unrendered live moments permanently showed "Rendering Vertical Clip..." indefinitely. The Live dashboard and Streamer Studio now distinguish active rendering jobs from expired or unavailable buffer segments with clear status feedback and a one-click delete option. ([#456](https://github.com/FujiwaraChoki/supoclip/pull/456))
