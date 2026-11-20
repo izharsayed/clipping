@@ -257,6 +257,102 @@ export default function StreamerPreviewPage() {
     }
   };
 
+  // Speech & Energy Radar state
+  const [radarModalOpen, setRadarModalOpen] = useState(false);
+  const [savingRadar, setSavingRadar] = useState(false);
+
+  // Extract threshold and trigger mode from preferred_categories or default
+  const currentThreshold = useMemo(() => {
+    const match = channel?.preferred_categories?.find((c) => c.startsWith("threshold:"));
+    if (match) {
+      const parsed = parseInt(match.replace("threshold:", ""), 10);
+      if (!isNaN(parsed) && parsed >= 50 && parsed <= 95) return parsed;
+    }
+    return 80;
+  }, [channel?.preferred_categories]);
+
+  const currentRadarMode = useMemo(() => {
+    const match = channel?.preferred_categories?.find((c) => c.startsWith("radar_mode:"));
+    return match ? match.replace("radar_mode:", "") : "Balanced Hype";
+  }, [channel?.preferred_categories]);
+
+  const [viralityThreshold, setViralityThreshold] = useState(80);
+  const [radarMode, setRadarMode] = useState("Balanced Hype");
+
+  // Keep state synced with channel
+  useEffect(() => {
+    setViralityThreshold(currentThreshold);
+  }, [currentThreshold]);
+
+  useEffect(() => {
+    setRadarMode(currentRadarMode);
+  }, [currentRadarMode]);
+
+  // Live dynamic audio visualizer simulation
+  const [dynamicBars, setDynamicBars] = useState<number[]>([
+    24, 45, 78, 62, 89, 95, 70, 48, 82, 91, 65, 38, 55, 75, 88, 60, 42, 68, 85, 52,
+  ]);
+
+  const isChannelLive = Boolean(channel && channel.status === "live");
+
+  useEffect(() => {
+    if (!isChannelLive) {
+      setDynamicBars([14, 18, 12, 22, 16, 12, 20, 15, 14, 18, 12, 10, 16, 14, 20, 16, 12, 15, 18, 14]);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setDynamicBars((prev) =>
+        prev.map(() => {
+          // Base energy between 20% and 75%
+          const base = Math.floor(Math.random() * 55) + 20;
+          // 25% chance of peak energy spike up to 98%
+          const isSpike = Math.random() < 0.25;
+          return isSpike ? Math.floor(Math.random() * 25) + 75 : base;
+        })
+      );
+    }, 700);
+
+    return () => clearInterval(interval);
+  }, [isChannelLive]);
+
+  const handleSaveRadar = async (newThreshold: number, newMode: string) => {
+    if (!channel) return;
+    setSavingRadar(true);
+
+    const existingCategories = (channel.preferred_categories || []).filter(
+      (c) => !c.startsWith("threshold:") && !c.startsWith("radar_mode:")
+    );
+    const updatedCategories = [
+      ...existingCategories,
+      `threshold:${newThreshold}`,
+      `radar_mode:${newMode}`,
+    ];
+
+    try {
+      const res = await fetch(`/api/live/channels/${channelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preferred_categories: updatedCategories,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setChannel((prev) => (prev ? { ...prev, ...data } : prev));
+        toast.success(`Radar virality threshold set to ${newThreshold}% (${newMode})`);
+        setRadarModalOpen(false);
+      } else {
+        toast.error("Failed to update radar settings");
+      }
+    } catch {
+      toast.error("Network error updating radar settings");
+    } finally {
+      setSavingRadar(false);
+    }
+  };
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setHostname(window.location.hostname || "localhost");
@@ -692,35 +788,93 @@ export default function StreamerPreviewPage() {
                     <Volume2 className="size-3.5 text-primary" />
                     Speech & Energy Radar
                   </span>
-                  <Badge variant="outline" className="text-[10px] font-mono">
-                    {isLive ? "Active Listening" : "Standby"}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      {isLive ? "Active Listening" : "Standby"}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRadarModalOpen(true)}
+                      className="h-6 text-[11px] px-2 gap-1 rounded border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                    >
+                      <SlidersHorizontal className="size-3" />
+                      Tune Radar
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Animated Waveform Bars */}
-                <div className="h-14 flex items-end gap-1.5 px-2 py-1 bg-muted/40 rounded-xl border border-border/50 overflow-hidden">
-                  {[24, 45, 78, 62, 89, 95, 70, 48, 82, 91, 65, 38, 55, 75, 88, 60, 42, 68, 85, 52].map(
-                    (val, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          height: isLive ? `${val}%` : "12%",
-                        }}
-                        className={`flex-1 rounded-full transition-all duration-300 ${
-                          isLive
-                            ? val > 75
-                              ? "bg-amber-500 animate-pulse"
-                              : "bg-primary"
-                            : "bg-muted-foreground/30"
-                        }`}
-                      />
-                    )
-                  )}
+                <div
+                  onClick={() => setRadarModalOpen(true)}
+                  className="h-14 flex items-end gap-1.5 px-2 py-1 bg-muted/40 rounded-xl border border-border/50 overflow-hidden cursor-pointer hover:border-primary/50 transition group"
+                  title="Click to tune radar sensitivity and focus"
+                >
+                  {dynamicBars.map((val, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        height: isLive ? `${val}%` : "12%",
+                      }}
+                      className={`flex-1 rounded-full transition-all duration-300 ${
+                        isLive
+                          ? val >= viralityThreshold
+                            ? "bg-amber-500 animate-pulse"
+                            : "bg-primary"
+                          : "bg-muted-foreground/30"
+                      }`}
+                    />
+                  ))}
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Virality Threshold: 80%</span>
-                  <span>Audio Peak: {isLive ? "High Dialogue" : "Quiet"}</span>
+                {/* Inline Telemetry & Quick Adjuster */}
+                <div className="space-y-2 pt-0.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      Virality Threshold:{" "}
+                      <strong className="text-foreground font-semibold">{viralityThreshold}%</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRadarModalOpen(true)}
+                      className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition cursor-pointer flex items-center gap-1"
+                    >
+                      <span>{radarMode}</span>
+                      <SlidersHorizontal className="size-2.5" />
+                    </button>
+                  </div>
+
+                  {/* Inline Slider for Quick Tuning */}
+                  <div className="flex items-center gap-2">
+                    <Slider
+                      aria-label="Virality Threshold"
+                      value={[viralityThreshold]}
+                      min={50}
+                      max={95}
+                      step={5}
+                      onValueChange={([val]) => setViralityThreshold(val)}
+                      onValueCommit={([val]) => handleSaveRadar(val, radarMode)}
+                      className="flex-1"
+                    />
+                    <span className="text-[10px] font-mono text-muted-foreground shrink-0 w-8 text-right">
+                      {viralityThreshold}%
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
+                    <span>
+                      Audio Peak:{" "}
+                      <strong className="text-foreground">
+                        {isLive
+                          ? dynamicBars.some((b) => b >= viralityThreshold)
+                            ? "🔥 Spike Detected"
+                            : "High Dialogue"
+                          : "Quiet"}
+                      </strong>
+                    </span>
+                    <span>Loudness: <strong className="text-foreground">-14 LUFS</strong></span>
+                  </div>
                 </div>
               </Card>
 
@@ -1236,6 +1390,111 @@ export default function StreamerPreviewPage() {
                 </Button>
                 <Button type="submit" size="sm" disabled={savingSpecs}>
                   {savingSpecs ? "Saving..." : "Save Specifications"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Speech & Energy Radar Tuning Dialog */}
+        <Dialog open={radarModalOpen} onOpenChange={setRadarModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Volume2 className="size-4 text-primary" />
+                Speech & Energy Radar Tuning
+              </DialogTitle>
+              <DialogDescription>
+                Adjust audio energy thresholds and detection presets to control how sensitively the AI engine captures highlight moments.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveRadar(viralityThreshold, radarMode);
+              }}
+              className="space-y-4 pt-2"
+            >
+              {/* Detection Trigger Focus Presets */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Detection Trigger Focus</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: "Balanced Hype", label: "🔥 Balanced Hype", desc: "Spikes & dialogue" },
+                    { id: "Loud Reactions", label: "⚡ Loud Reactions", desc: "Screams & rage" },
+                    { id: "Dialogue & Story", label: "💬 Dialogue & Story", desc: "Talk & podcasts" },
+                    { id: "Gameplay Action", label: "🎯 Gameplay Action", desc: "Clutches & sound fx" },
+                  ].map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setRadarMode(preset.id);
+                        if (preset.id === "Loud Reactions") setViralityThreshold(75);
+                        if (preset.id === "Balanced Hype") setViralityThreshold(80);
+                        if (preset.id === "Dialogue & Story") setViralityThreshold(85);
+                        if (preset.id === "Gameplay Action") setViralityThreshold(70);
+                      }}
+                      className={`p-2.5 rounded-lg border text-left transition text-xs flex flex-col justify-between ${
+                        radarMode === preset.id
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border/50 bg-muted/30 hover:bg-muted/60 text-muted-foreground"
+                      }`}
+                    >
+                      <span className="font-semibold text-foreground text-[11px]">{preset.label}</span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">{preset.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Virality Sensitivity Slider */}
+              <div className="space-y-2 p-3 rounded-lg bg-muted/40 border border-border/40">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Virality Cut Threshold</Label>
+                  <span className="text-xs font-bold text-primary font-mono">{viralityThreshold}%</span>
+                </div>
+                <Slider
+                  aria-label="Modal virality threshold slider"
+                  value={[viralityThreshold]}
+                  min={50}
+                  max={95}
+                  step={5}
+                  onValueChange={([val]) => setViralityThreshold(val)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {viralityThreshold <= 65
+                    ? "High Frequency: Detects moderate excitement and generates more clips."
+                    : viralityThreshold >= 85
+                    ? "Strict Viral: Only extracts absolute loudest spikes and viral punchlines."
+                    : "Balanced: Optimal balance between laughter peaks and hype dialogue."}
+                </p>
+              </div>
+
+              {/* Real-Time Telemetry Preview */}
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-background border border-border/60 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="size-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="text-muted-foreground">Stream Listening Status:</span>
+                </div>
+                <span className="font-semibold text-foreground">
+                  {isLive ? "Active (-14 LUFS)" : "Standby (Offline)"}
+                </span>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRadarModalOpen(false)}
+                  disabled={savingRadar}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={savingRadar}>
+                  {savingRadar ? "Saving..." : "Save Radar Settings"}
                 </Button>
               </DialogFooter>
             </form>

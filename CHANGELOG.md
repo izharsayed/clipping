@@ -6,6 +6,7 @@ Add a line here when a pull request changes something a user can see. Use **New*
 
 ## 2026-11-20
 
+- **New:** The Speech & Energy Radar in the Live Streamer Studio (`/live/[id]`) is now interactive with dynamic real-time audio visualizer telemetry, an inline virality threshold slider (50%–95%), and a dedicated radar tuning dialog to switch between detection focus presets (Balanced Hype, Loud Reactions & Rage, Dialogue & Story, and Gameplay Clutches). ([#458](https://github.com/FujiwaraChoki/supoclip/pull/458))
 - **New:** The Clipping & AI Specifications card in the Live Streamer Studio (`/live/[id]`) is now fully interactive. Streamers can configure min/max clip length bounds with quick presets (Shorts, Balanced, Longform), adjust max clips quota per stream, switch between 9:16 Vertical, 9:16 Split Screen, or 16:9 Landscape reframing layouts, choose PeakCut AI copy generation styles, and toggle automatic social publishing with one click. ([#457](https://github.com/FujiwaraChoki/supoclip/pull/457))
 
 ## 2026-11-19

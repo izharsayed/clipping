@@ -222,3 +222,33 @@ it("opens specifications configuration modal and saves updated clipping rules", 
     expect(toast.success).toHaveBeenCalledWith("Clipping specifications updated successfully!");
   });
 });
+
+it("opens Speech & Energy Radar tuning modal and saves updated virality threshold and focus preset", async () => {
+  render(<StreamerPreviewPage />);
+
+  const tuneBtn = await screen.findByRole("button", { name: /Tune Radar/i });
+  fireEvent.click(tuneBtn);
+
+  expect(await screen.findByRole("heading", { name: "Speech & Energy Radar Tuning" })).toBeInTheDocument();
+
+  // Click Loud Reactions preset
+  const loudPreset = screen.getByRole("button", { name: /Loud Reactions/i });
+  fireEvent.click(loudPreset);
+
+  const saveBtn = screen.getByRole("button", { name: /Save Radar Settings/i });
+  fireEvent.click(saveBtn);
+
+  await waitFor(() => {
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/live/channels/ch-123",
+      expect.objectContaining({
+        method: "PATCH",
+      })
+    );
+  });
+  await waitFor(() => {
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining("Radar virality threshold set to 75% (Loud Reactions)")
+    );
+  });
+});
