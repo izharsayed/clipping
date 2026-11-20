@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { memo, useCallback, useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -125,6 +125,145 @@ function formatDuration(seconds: number): string {
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
 }
+
+interface SpeechRadarCardProps {
+  isLive: boolean;
+  viralityThreshold: number;
+  radarMode: string;
+  onOpenModal: () => void;
+  onThresholdChange: (val: number) => void;
+  onSaveRadar: (threshold: number, mode: string) => void;
+}
+
+const SpeechRadarCard = memo(function SpeechRadarCard({
+  isLive,
+  viralityThreshold,
+  radarMode,
+  onOpenModal,
+  onThresholdChange,
+  onSaveRadar,
+}: SpeechRadarCardProps) {
+  const [dynamicBars, setDynamicBars] = useState<number[]>([
+    24, 45, 78, 62, 89, 95, 70, 48, 82, 91, 65, 38, 55, 75, 88, 60, 42, 68, 85, 52,
+  ]);
+
+  useEffect(() => {
+    if (!isLive) {
+      setDynamicBars([14, 18, 12, 22, 16, 12, 20, 15, 14, 18, 12, 10, 16, 14, 20, 16, 12, 15, 18, 14]);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setDynamicBars((prev) =>
+        prev.map(() => {
+          const base = Math.floor(Math.random() * 55) + 20;
+          const isSpike = Math.random() < 0.25;
+          return isSpike ? Math.floor(Math.random() * 25) + 75 : base;
+        })
+      );
+    }, 700);
+
+    return () => clearInterval(interval);
+  }, [isLive]);
+
+  return (
+    <Card className="border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+          <Volume2 className="size-3.5 text-primary" />
+          Speech & Energy Radar
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Badge variant="outline" className="text-[10px] font-mono">
+            {isLive ? "Active Listening" : "Standby"}
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onOpenModal}
+            className="h-6 text-[11px] px-2 gap-1 rounded border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+          >
+            <SlidersHorizontal className="size-3" />
+            Tune Radar
+          </Button>
+        </div>
+      </div>
+
+      {/* Animated Waveform Bars */}
+      <div
+        onClick={onOpenModal}
+        className="h-14 flex items-end gap-1.5 px-2 py-1 bg-muted/40 rounded-xl border border-border/50 overflow-hidden cursor-pointer hover:border-primary/50 transition group"
+        title="Click to tune radar sensitivity and focus"
+      >
+        {dynamicBars.map((val, idx) => (
+          <div
+            key={idx}
+            style={{
+              height: isLive ? `${val}%` : "12%",
+            }}
+            className={`flex-1 rounded-full transition-all duration-300 ${
+              isLive
+                ? val >= viralityThreshold
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-primary"
+                : "bg-muted-foreground/30"
+            }`}
+          />
+        ))}
+      </div>
+
+      {/* Inline Telemetry & Quick Adjuster */}
+      <div className="space-y-2 pt-0.5">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-muted-foreground flex items-center gap-1">
+            Virality Threshold:{" "}
+            <strong className="text-foreground font-semibold">{viralityThreshold}%</strong>
+          </span>
+          <button
+            type="button"
+            onClick={onOpenModal}
+            className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition cursor-pointer flex items-center gap-1"
+          >
+            <span>{radarMode}</span>
+            <SlidersHorizontal className="size-2.5" />
+          </button>
+        </div>
+
+        {/* Inline Slider for Quick Tuning */}
+        <div className="flex items-center gap-2">
+          <Slider
+            aria-label="Virality Threshold"
+            value={[viralityThreshold]}
+            min={50}
+            max={95}
+            step={5}
+            onValueChange={([val]) => onThresholdChange(val)}
+            onValueCommit={([val]) => onSaveRadar(val, radarMode)}
+            className="flex-1"
+          />
+          <span className="text-[10px] font-mono text-muted-foreground shrink-0 w-8 text-right">
+            {viralityThreshold}%
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
+          <span>
+            Audio Peak:{" "}
+            <strong className="text-foreground">
+              {isLive
+                ? dynamicBars.some((b) => b >= viralityThreshold)
+                  ? "🔥 Spike Detected"
+                  : "High Dialogue"
+                : "Quiet"}
+            </strong>
+          </span>
+          <span>Loudness: <strong className="text-foreground">-14 LUFS</strong></span>
+        </div>
+      </div>
+    </Card>
+  );
+});
 
 export default function StreamerPreviewPage() {
   const routeParams = useParams<{ id: string }>();
@@ -287,34 +426,6 @@ export default function StreamerPreviewPage() {
   useEffect(() => {
     setRadarMode(currentRadarMode);
   }, [currentRadarMode]);
-
-  // Live dynamic audio visualizer simulation
-  const [dynamicBars, setDynamicBars] = useState<number[]>([
-    24, 45, 78, 62, 89, 95, 70, 48, 82, 91, 65, 38, 55, 75, 88, 60, 42, 68, 85, 52,
-  ]);
-
-  const isChannelLive = Boolean(channel && channel.status === "live");
-
-  useEffect(() => {
-    if (!isChannelLive) {
-      setDynamicBars([14, 18, 12, 22, 16, 12, 20, 15, 14, 18, 12, 10, 16, 14, 20, 16, 12, 15, 18, 14]);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setDynamicBars((prev) =>
-        prev.map(() => {
-          // Base energy between 20% and 75%
-          const base = Math.floor(Math.random() * 55) + 20;
-          // 25% chance of peak energy spike up to 98%
-          const isSpike = Math.random() < 0.25;
-          return isSpike ? Math.floor(Math.random() * 25) + 75 : base;
-        })
-      );
-    }, 700);
-
-    return () => clearInterval(interval);
-  }, [isChannelLive]);
 
   const handleSaveRadar = async (newThreshold: number, newMode: string) => {
     if (!channel) return;
@@ -782,101 +893,14 @@ export default function StreamerPreviewPage() {
             {/* Audio Telemetry & Live Clip Engine Specs */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Simulated Audio Energy Visualizer */}
-              <Card className="border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
-                    <Volume2 className="size-3.5 text-primary" />
-                    Speech & Energy Radar
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className="text-[10px] font-mono">
-                      {isLive ? "Active Listening" : "Standby"}
-                    </Badge>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRadarModalOpen(true)}
-                      className="h-6 text-[11px] px-2 gap-1 rounded border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
-                    >
-                      <SlidersHorizontal className="size-3" />
-                      Tune Radar
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Animated Waveform Bars */}
-                <div
-                  onClick={() => setRadarModalOpen(true)}
-                  className="h-14 flex items-end gap-1.5 px-2 py-1 bg-muted/40 rounded-xl border border-border/50 overflow-hidden cursor-pointer hover:border-primary/50 transition group"
-                  title="Click to tune radar sensitivity and focus"
-                >
-                  {dynamicBars.map((val, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        height: isLive ? `${val}%` : "12%",
-                      }}
-                      className={`flex-1 rounded-full transition-all duration-300 ${
-                        isLive
-                          ? val >= viralityThreshold
-                            ? "bg-amber-500 animate-pulse"
-                            : "bg-primary"
-                          : "bg-muted-foreground/30"
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                {/* Inline Telemetry & Quick Adjuster */}
-                <div className="space-y-2 pt-0.5">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      Virality Threshold:{" "}
-                      <strong className="text-foreground font-semibold">{viralityThreshold}%</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setRadarModalOpen(true)}
-                      className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition cursor-pointer flex items-center gap-1"
-                    >
-                      <span>{radarMode}</span>
-                      <SlidersHorizontal className="size-2.5" />
-                    </button>
-                  </div>
-
-                  {/* Inline Slider for Quick Tuning */}
-                  <div className="flex items-center gap-2">
-                    <Slider
-                      aria-label="Virality Threshold"
-                      value={[viralityThreshold]}
-                      min={50}
-                      max={95}
-                      step={5}
-                      onValueChange={([val]) => setViralityThreshold(val)}
-                      onValueCommit={([val]) => handleSaveRadar(val, radarMode)}
-                      className="flex-1"
-                    />
-                    <span className="text-[10px] font-mono text-muted-foreground shrink-0 w-8 text-right">
-                      {viralityThreshold}%
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
-                    <span>
-                      Audio Peak:{" "}
-                      <strong className="text-foreground">
-                        {isLive
-                          ? dynamicBars.some((b) => b >= viralityThreshold)
-                            ? "🔥 Spike Detected"
-                            : "High Dialogue"
-                          : "Quiet"}
-                      </strong>
-                    </span>
-                    <span>Loudness: <strong className="text-foreground">-14 LUFS</strong></span>
-                  </div>
-                </div>
-              </Card>
+              <SpeechRadarCard
+                isLive={isLive}
+                viralityThreshold={viralityThreshold}
+                radarMode={radarMode}
+                onOpenModal={() => setRadarModalOpen(true)}
+                onThresholdChange={(val) => setViralityThreshold(val)}
+                onSaveRadar={handleSaveRadar}
+              />
 
               {/* Engine Clipping Rules */}
               <Card className="border bg-card p-4 space-y-3">
