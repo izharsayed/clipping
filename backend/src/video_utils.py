@@ -75,6 +75,7 @@ from .media.ffmpeg import (
     ffmpeg_escape_filter_path,
     ffmpeg_escape_filter_value,
     ffprobe_has_audio,
+    is_nvenc_available,
     render_ranges_crossfade_ffmpeg,
     rendered_clip_duration,
     subtitles_filter_fragment,
@@ -720,6 +721,11 @@ def apply_transition_effect(
         else:
             video_label = "[vintro]"
 
+        vcodec_args = (
+            ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20"]
+            if is_nvenc_available()
+            else ["-c:v", "libx264", "-preset", "fast", "-crf", "20"]
+        )
         command = [
             "ffmpeg",
             "-y",
@@ -733,12 +739,7 @@ def apply_transition_effect(
             video_label,
             "-map",
             "1:a?",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "20",
+            *vcodec_args,
             "-pix_fmt",
             "yuv420p",
             "-c:a",
@@ -906,6 +907,11 @@ def insert_broll_into_clip(
         else:
             video_label = concat_labels[0]
 
+        vcodec_args = (
+            ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20"]
+            if is_nvenc_available()
+            else ["-c:v", "libx264", "-preset", "fast", "-crf", "20"]
+        )
         command = [
             "ffmpeg",
             "-y",
@@ -919,12 +925,7 @@ def insert_broll_into_clip(
             video_label,
             "-map",
             "0:a?",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "20",
+            *vcodec_args,
             "-pix_fmt",
             "yuv420p",
             "-c:a",

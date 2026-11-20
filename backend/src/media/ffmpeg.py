@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Tuple
 from ..clip_source_map import normalize_source_ranges
 from ..config import get_config
+import functools
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -308,17 +310,58 @@ def ffmpeg_escape_filter_path(path: Path) -> str:
 NO_CHAPTERS = ("-map_chapters", "-1")
 
 
+@functools.lru_cache(maxsize=1)
+def is_nvenc_available() -> bool:
+    """Return True if NVIDIA NVENC hardware encoder is usable in ffmpeg."""
+    if os.getenv("ENABLE_NVENC", "true").lower() in {"0", "false", "no", "off"}:
+        return False
+    try:
+        res = subprocess.run(
+            [
+                "ffmpeg", "-v", "error", "-y",
+                "-f", "lavfi", "-i", "nullsrc=s=256x256:d=0.04",
+                "-c:v", "h264_nvenc", "-f", "null", "-",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        if res.returncode == 0:
+            logger.info("NVIDIA NVENC hardware encoding acceleration is active (GPU offload enabled).")
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def build_final_video_encode_args(
     crf: int = FINAL_VIDEO_CRF,
     preset: str = FINAL_VIDEO_PRESET,
     fps: int | str = OUTPUT_FPS,
     level: str = "4.1",
 ) -> List[str]:
-    """libx264 args for the quality-determining final pass (CFR, H.264 High).
+    """Encoding args for the quality-determining final pass (CFR, H.264 High).
 
-    Level 4.1 covers 1080p30. Original-format output at 60 fps (or 59.94)
-    needs 4.2 or x264 rejects the stream.
+    Uses hardware-accelerated h264_nvenc if an NVIDIA GPU is available,
+    offloading encoding workload from CPU and host RAM to the graphics card.
+    Falls back to libx264 software encoding on environments without a GPU.
     """
+    if is_nvenc_available():
+        return [
+            *NO_CHAPTERS,
+            "-c:v", "h264_nvenc",
+            "-preset", "p5",
+            "-tune", "hq",
+            "-rc", "vbr",
+            "-cq", str(crf),
+            "-b:v", "0",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "high",
+            "-level", level,
+            "-r", str(fps),
+            "-g", "120",
+            "-keyint_min", "30",
+        ]
     return [
         *NO_CHAPTERS,
         "-c:v", "libx264",
@@ -567,11 +610,16 @@ def _range_inputs(
         args = []
         for index, (origin, length) in enumerate(windows):
             piece = Path(work_dir) / f"r{index}.mp4"
+            vcodec_args = (
+                ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", str(INTERMEDIATE_CRF)]
+                if is_nvenc_available()
+                else ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(INTERMEDIATE_CRF)]
+            )
             command = [
                 "ffmpeg", "-y", "-ss", f"{origin:.3f}", "-i", str(video_path),
                 *audio_stream_map_args(audio_stream),
                 "-t", f"{length:.3f}",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", str(INTERMEDIATE_CRF),
+                *vcodec_args,
                 "-pix_fmt", "yuv420p",
             ]
             if audio_stream is not None:
@@ -699,12 +747,17 @@ def render_ranges_crossfade_ffmpeg(
                 cur_a = out
             map_args += ["-map", cur_a]
 
+        vcodec_args = (
+            ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", str(INTERMEDIATE_CRF)]
+            if is_nvenc_available()
+            else ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(INTERMEDIATE_CRF)]
+        )
         command = [
             "ffmpeg", "-y", *input_args,
             "-filter_complex", ";".join(parts),
             *map_args,
             *NO_CHAPTERS,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", str(INTERMEDIATE_CRF),
+            *vcodec_args,
             "-pix_fmt", "yuv420p",
         ]
         if has_audio:

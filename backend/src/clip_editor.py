@@ -88,6 +88,33 @@ def _double_bitrate(value: str) -> str:
 
 
 def _encode_args(audio_bitrate: str = "256k") -> list[str]:
+    from src.media.ffmpeg import is_nvenc_available
+
+    if is_nvenc_available():
+        return [
+            "-c:v",
+            "h264_nvenc",
+            "-preset",
+            "p5",
+            "-tune",
+            "hq",
+            "-rc",
+            "vbr",
+            "-cq",
+            "18",
+            "-b:v",
+            "0",
+            "-pix_fmt",
+            "yuv420p",
+            "-profile:v",
+            "high",
+            "-c:a",
+            "aac",
+            "-b:a",
+            audio_bitrate,
+            "-movflags",
+            "+faststart",
+        ]
     return [
         "-c:v",
         "libx264",
@@ -512,6 +539,33 @@ def export_with_preset(
     geometry = probe_video_geometry(input_path)
     if geometry and geometry.fps is not None and geometry.fps > MAX_OUTPUT_FPS + FPS_EPSILON:
         scale_filter = f"fps={MAX_OUTPUT_FPS},{scale_filter}"
+    from src.media.ffmpeg import is_nvenc_available
+
+    vcodec_args = (
+        [
+            "-c:v",
+            "h264_nvenc",
+            "-preset",
+            "p5",
+            "-tune",
+            "hq",
+            "-rc",
+            "vbr",
+            "-cq",
+            "18",
+            "-b:v",
+            "0",
+        ]
+        if is_nvenc_available()
+        else [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-crf",
+            "18",
+        ]
+    )
     command = [
         "ffmpeg",
         "-y",
@@ -519,12 +573,7 @@ def export_with_preset(
         str(input_path),
         "-vf",
         scale_filter,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "slow",
-        "-crf",
-        "18",
+        *vcodec_args,
         "-maxrate",
         preset.video_bitrate,
         "-bufsize",
