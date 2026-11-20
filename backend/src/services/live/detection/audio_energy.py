@@ -29,11 +29,46 @@ class AudioEnergyDetector:
         spike_multiplier: float = 2.5,
         alpha: float = 0.85,  # Moving average smoothing factor
         min_rms_threshold: float = 0.02,  # Ignore pure silence
+        vocal_isolation: bool = True,
     ):
         self.spike_multiplier = spike_multiplier
         self.alpha = alpha
         self.min_rms_threshold = min_rms_threshold
+        self.vocal_isolation = vocal_isolation
         self.baseline_rms: Optional[float] = None
+        self.threshold_percent: int = 80
+        self.current_mode: str = "Balanced Hype"
+
+    def set_sensitivity(self, threshold_percent: int, mode: str = "Balanced Hype") -> None:
+        """
+        Dynamically tunes spike multiplier based on channel's Virality Threshold (50-95%) and mode.
+        - Higher threshold (85-95%) requires a larger vocal spike (strict viral filtering).
+        - Lower threshold (50-65%) is more sensitive to conversational energy.
+        """
+        self.threshold_percent = max(50, min(95, threshold_percent))
+        self.current_mode = mode or "Balanced Hype"
+
+        # Linear mapping: 50% -> 1.8x, 80% -> 2.6x, 95% -> 3.5x
+        norm = (self.threshold_percent - 50) / 45.0
+        base_multiplier = 1.8 + (norm * 1.7)
+
+        if self.current_mode == "Loud Reactions":
+            # Strict screaming / shouting filter
+            self.spike_multiplier = round(base_multiplier * 1.15, 2)
+        elif self.current_mode == "Dialogue & Story":
+            # Catches subtle narrative punchlines and conversational spikes
+            self.spike_multiplier = round(base_multiplier * 0.85, 2)
+        elif self.current_mode == "Gameplay Action":
+            self.spike_multiplier = round(base_multiplier * 1.0, 2)
+        else:  # "Balanced Hype"
+            self.spike_multiplier = round(base_multiplier, 2)
+
+        logger.debug(
+            "Tuned AudioEnergyDetector sensitivity: threshold=%d%%, mode='%s' -> spike_multiplier=%.2fx",
+            self.threshold_percent,
+            self.current_mode,
+            self.spike_multiplier,
+        )
 
     async def analyze_segment(self, segment_path: Path) -> AudioEnergyResult:
         """Extract audio samples from video segment and compute RMS & excitement spike."""
@@ -45,6 +80,12 @@ class AudioEnergyDetector:
             "-i",
             str(segment_path),
             "-vn",
+        ]
+        if self.vocal_isolation:
+            # Vocal bandpass filter (200Hz - 3500Hz) rejects low-end rumble (explosions, engines)
+            # and high-frequency hiss, isolating human speech and vocal excitement.
+            cmd.extend(["-af", "highpass=f=200,lowpass=f=3500"])
+        cmd.extend([
             "-ac",
             "1",
             "-ar",
@@ -52,7 +93,7 @@ class AudioEnergyDetector:
             "-f",
             "f32le",
             "pipe:1",
-        ]
+        ])
 
         try:
             proc = await asyncio.create_subprocess_exec(

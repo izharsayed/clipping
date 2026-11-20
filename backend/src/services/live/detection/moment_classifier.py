@@ -42,6 +42,12 @@ class MomentClassification(BaseModel):
     suggested_duration_seconds: int = Field(
         default=35, ge=15, le=60, description="Recommended clip duration in seconds."
     )
+    hook_quality: Literal["strong", "moderate", "weak"] = Field(
+        default="moderate", description="Evaluation of opening hook strength for short-form retention."
+    )
+    viral_factor: str = Field(
+        default="", description="Key viral trigger (e.g., unexpected fail, explosive reaction, clutch win)."
+    )
 
 
 class MomentClassifier:
@@ -81,6 +87,7 @@ class MomentClassifier:
         streamer_name: str,
         game_or_category: Optional[str] = None,
         audio_spike_ratio: float = 1.0,
+        radar_mode: str = "Balanced Hype",
     ) -> MomentClassification:
         """Evaluate a candidate moment and return structured decision."""
         # If there is literally no spoken words and spike is modest, reject early
@@ -92,15 +99,19 @@ class MomentClassifier:
                 title="",
                 description="Insufficient dialogue or reaction content.",
                 reason="Silence or minimal audio activity.",
+                hook_quality="weak",
+                viral_factor="None (silence)",
             )
 
         agent = self._get_agent()
         prompt = (
             f"Streamer: {streamer_name}\n"
             f"Game/Category: {game_or_category or 'General'}\n"
-            f"Audio Excitement Spike: {audio_spike_ratio}x baseline\n"
+            f"Radar Focus Mode: {radar_mode}\n"
+            f"Vocal Excitement Spike: {audio_spike_ratio}x baseline\n"
             f"Dialogue Transcript:\n\"\"\"{transcript}\"\"\"\n\n"
-            "Analyze whether this moment is entertaining and worthy of a short-form clip."
+            "Analyze whether this moment is entertaining, viral, and worthy of a short-form clip. "
+            "Evaluate hook strength in the opening lines and ensure the moment has a payoff or punchline."
         )
 
         try:
@@ -122,4 +133,6 @@ class MomentClassifier:
                 title=f"Crazy Moment from {streamer_name}",
                 description=transcript[:100] if transcript else f"Loud reaction on {streamer_name}'s stream",
                 reason=f"Detected audio spike ({audio_spike_ratio}x) with spoken dialogue.",
+                hook_quality="moderate" if is_worthy else "weak",
+                viral_factor="Vocal energy spike" if audio_spike_ratio >= 3.0 else "Conversational dialogue",
             )

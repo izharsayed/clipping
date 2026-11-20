@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from src.services.live.detection.audio_energy import AudioEnergyDetector, AudioEnergyResult
 from src.services.live.detection.moment_classifier import MomentClassifier, MomentClassification
-from src.services.live.detection.orchestrator import LiveMomentOrchestrator
+from src.services.live.detection.orchestrator import LiveMomentOrchestrator, find_optimal_speech_cut_points
 from src.services.live.capture.rolling_buffer import RollingBuffer, SegmentInfo
 from src.models import MonitoredChannel, LiveStreamSession, LiveClipMoment
 
@@ -121,3 +121,66 @@ async def test_orchestrator_cooldown_and_dispatch(tmp_path: Path):
             mock_eval.reset_mock()
             await orchestrator.on_segment_arrived(seg)
             assert not mock_eval.called
+
+
+@pytest.mark.asyncio
+async def test_audio_energy_detector_vocal_filter_and_sensitivity():
+    detector = AudioEnergyDetector(spike_multiplier=2.5, vocal_isolation=True)
+
+    # 1. Verify vocal isolation adds bandpass filter to ffmpeg command
+    captured_cmd = []
+
+    def mock_subprocess(*args, **kwargs):
+        captured_cmd.extend(args)
+        m = AsyncMock()
+        m.returncode = 0
+        samples = np.full(16000, 0.05, dtype=np.float32)
+        m.communicate.return_value = (samples.tobytes(), b"")
+        return m
+
+    with patch("asyncio.create_subprocess_exec", side_effect=mock_subprocess):
+        await detector.analyze_segment(Path("test_vocal.ts"))
+        assert "-af" in captured_cmd
+        af_idx = captured_cmd.index("-af")
+        assert "highpass=f=200,lowpass=f=3500" in captured_cmd[af_idx + 1]
+
+    # 2. Test sensitivity mapping across virality thresholds and radar modes
+    # At default 80% Balanced Hype
+    detector.set_sensitivity(80, "Balanced Hype")
+    assert detector.spike_multiplier == 2.93 or 2.6 <= detector.spike_multiplier <= 3.0
+
+    # At 95% Loud Reactions (Strict viral screaming)
+    detector.set_sensitivity(95, "Loud Reactions")
+    assert detector.spike_multiplier >= 3.8
+
+    # At 50% Dialogue & Story (Conversational punchlines)
+    detector.set_sensitivity(50, "Dialogue & Story")
+    assert detector.spike_multiplier <= 1.6
+
+
+def test_find_optimal_speech_cut_points():
+    words = [
+        {"word": "um", "start": 0.5, "end": 0.8},
+        {"word": "so", "start": 0.9, "end": 1.1},
+        {"word": "Yesterday", "start": 2.0, "end": 2.6},  # Capitalized after 0.9s pause
+        {"word": "we", "start": 2.7, "end": 2.9},
+        {"word": "won", "start": 3.0, "end": 3.3},
+        {"word": "it!", "start": 3.4, "end": 3.8},  # Sentence terminal punctuation
+        {"word": "crazy", "start": 4.5, "end": 4.9},
+    ]
+
+    # Target: 1.5s to 4.0s
+    start, end = find_optimal_speech_cut_points(
+        words=words,
+        target_start=1.5,
+        target_end=4.0,
+        total_duration=10.0,
+        min_duration=1.0,
+        max_duration=10.0,
+    )
+
+    # Snaps cleanly to "Yesterday" (2.0s) and "it!" (3.8s)
+    assert start == 2.0
+    assert end == 3.8
+
+

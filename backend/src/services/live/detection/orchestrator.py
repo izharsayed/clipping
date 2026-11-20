@@ -21,6 +21,81 @@ logger = logging.getLogger(__name__)
 DEFAULT_MOMENT_COOLDOWN_SECONDS = 45.0
 
 
+def find_optimal_speech_cut_points(
+    words: list[dict],
+    target_start: float,
+    target_end: float,
+    total_duration: float,
+    min_duration: float = 15.0,
+    max_duration: float = 60.0,
+) -> tuple[float, float]:
+    """
+    Snaps raw cut points to natural conversational boundaries (pauses or sentence starts/ends)
+    using word-level timestamps, avoiding abrupt mid-word cutoffs.
+    """
+    if not words:
+        return max(0.0, target_start), min(total_duration, target_end)
+
+    best_start = target_start
+    best_start_score = -1.0
+
+    for i, w in enumerate(words):
+        w_start = float(w.get("start", 0.0))
+        dist = abs(w_start - target_start)
+        if dist > 3.5:
+            continue
+
+        score = 10.0 - dist
+        if i > 0:
+            prev_end = float(words[i - 1].get("end", 0.0))
+            pause = w_start - prev_end
+            if pause >= 0.35:
+                score += 5.0
+            elif pause >= 0.15:
+                score += 2.0
+        else:
+            score += 4.0
+
+        word_text = str(w.get("word", "")).strip()
+        if word_text and word_text[0].isupper():
+            score += 2.0
+
+        if score > best_start_score:
+            best_start_score = score
+            best_start = w_start
+
+    best_end = target_end
+    best_end_score = -1.0
+
+    for i, w in enumerate(words):
+        w_end = float(w.get("end", 0.0))
+        dist = abs(w_end - target_end)
+        if dist > 3.0:
+            continue
+
+        score = 10.0 - dist
+        word_text = str(w.get("word", "")).strip()
+        if word_text.endswith((".", "!", "?")):
+            score += 5.0
+
+        if i < len(words) - 1:
+            next_start = float(words[i + 1].get("start", 0.0))
+            if (next_start - w_end) >= 0.3:
+                score += 3.0
+
+        if score > best_end_score:
+            best_end_score = score
+            best_end = w_end
+
+    actual_dur = best_end - best_start
+    if actual_dur < min_duration:
+        best_start = max(0.0, best_end - min_duration)
+    elif actual_dur > max_duration:
+        best_start = max(0.0, best_end - max_duration)
+
+    return max(0.0, round(best_start, 3)), min(total_duration, round(best_end, 3))
+
+
 class LiveMomentOrchestrator:
     """Listens to recorded segments, analyzes excitement, and coordinates clipping."""
 
@@ -42,10 +117,42 @@ class LiveMomentOrchestrator:
 
         self._last_clip_time: float = 0.0
         self._processing_moment: bool = False
+        self._last_settings_refresh: float = 0.0
+
+    async def _sync_channel_settings(self) -> None:
+        """Fetch channel's configured virality threshold and radar mode to tune detector sensitivity."""
+        now = time.time()
+        if (now - self._last_settings_refresh) < 30.0:
+            return
+        self._last_settings_refresh = now
+
+        try:
+            async with AsyncSessionLocal() as db:
+                from sqlalchemy import select
+                ch_stmt = select(MonitoredChannel).where(MonitoredChannel.id == self.channel_id)
+                channel = (await db.execute(ch_stmt)).scalar_one_or_none()
+                if not channel:
+                    return
+
+                threshold = 80
+                mode = "Balanced Hype"
+                for cat in (channel.preferred_categories or []):
+                    if cat.startswith("threshold:"):
+                        try:
+                            threshold = int(cat.split(":", 1)[1])
+                        except ValueError:
+                            pass
+                    elif cat.startswith("radar_mode:"):
+                        mode = cat.split(":", 1)[1]
+
+                self.energy_detector.set_sensitivity(threshold, mode)
+        except Exception as e:
+            logger.debug("Could not refresh channel settings for %s: %s", self.channel_id, e)
 
     async def on_segment_arrived(self, segment: SegmentInfo) -> None:
         """Called whenever a new .ts segment is flushed to disk."""
         try:
+            await self._sync_channel_settings()
             energy_res: AudioEnergyResult = await self.energy_detector.analyze_segment(segment.file_path)
 
             now = time.time()
@@ -134,6 +241,7 @@ class LiveMomentOrchestrator:
                     streamer_name=channel.display_name,
                     game_or_category=session.game_name,
                     audio_spike_ratio=energy.spike_ratio,
+                    radar_mode=self.energy_detector.current_mode,
                 )
 
                 logger.info(
@@ -159,18 +267,32 @@ class LiveMomentOrchestrator:
 
                 # Check actual extracted slice duration
                 actual_slice_dur = await run_in_thread(ffprobe_duration, temp_slice_path)
-                if actual_slice_dur > target_duration + 1.5:
-                    trim_offset = max(0.0, actual_slice_dur - target_duration)
+                words = transcript_data.get("words", [])
+
+                target_start = max(0.0, actual_slice_dur - target_duration)
+                target_end = actual_slice_dur
+
+                optimal_start, optimal_end = find_optimal_speech_cut_points(
+                    words=words,
+                    target_start=target_start,
+                    target_end=target_end,
+                    total_duration=actual_slice_dur,
+                    min_duration=min_duration,
+                    max_duration=max_duration,
+                )
+
+                optimal_dur = optimal_end - optimal_start
+                if optimal_dur > 0 and (optimal_start > 0.5 or (actual_slice_dur - optimal_end) > 0.5):
                     trimmed_slice_path = self.buffer.buffer_dir / f"slice_trim_{slice_id}.mp4"
                     trim_cmd = [
                         "ffmpeg",
                         "-y",
                         "-ss",
-                        str(round(trim_offset, 3)),
+                        str(round(optimal_start, 3)),
                         "-i",
                         str(temp_slice_path),
                         "-t",
-                        str(round(target_duration, 3)),
+                        str(round(optimal_dur, 3)),
                         "-c",
                         "copy",
                         "-movflags",
@@ -187,24 +309,24 @@ class LiveMomentOrchestrator:
                         temp_slice_path.unlink(missing_ok=True)
                         temp_slice_path = trimmed_slice_path
 
-                        # Re-align transcript word timestamps to trimmed start
+                        # Re-align transcript word timestamps to natural speech boundary
                         adjusted_words = []
-                        for w in transcript_data.get("words", []):
-                            w_start = w.get("start", 0.0)
-                            w_end = w.get("end", 0.0)
-                            if w_end > trim_offset and w_start < actual_slice_dur:
+                        for w in words:
+                            w_start = float(w.get("start", 0.0))
+                            w_end = float(w.get("end", 0.0))
+                            if w_end > optimal_start and w_start < optimal_end:
                                 adjusted_words.append({
                                     **w,
-                                    "start": max(0.0, round(w_start - trim_offset, 3)),
-                                    "end": max(0.0, round(w_end - trim_offset, 3)),
+                                    "start": max(0.0, round(w_start - optimal_start, 3)),
+                                    "end": max(0.0, round(w_end - optimal_start, 3)),
                                 })
                         transcript_data["words"] = adjusted_words
                         if adjusted_words:
                             transcript_data["text"] = " ".join(w.get("word", "") for w in adjusted_words)
                             transcript_text = transcript_data["text"]
 
-                final_start_seconds = max(0.0, current_end - target_duration)
-                final_end_seconds = current_end
+                final_start_seconds = max(0.0, candidate_start + optimal_start)
+                final_end_seconds = min(current_end, candidate_start + optimal_end)
 
                 # 5. Save LiveClipMoment record
                 moment = LiveClipMoment(
