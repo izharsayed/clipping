@@ -6,6 +6,8 @@ Add a line here when a pull request changes something a user can see. Use **New*
 
 ## 2026-11-20
 
+- **New:** Added YouTube Search Tags to PeakCut Post Text with a 1-click "Copy tags" button that generates comma-separated tags ready to paste directly into YouTube Studio's tag box. Enhanced post-text generation with automatic multi-model fallback across high-quota Gemini flash-lite engines and contextual fallback parsing to ensure every clip always produces accurate, video-grounded hooks, titles, descriptions, hashtags, and tags. ([#464](https://github.com/FujiwaraChoki/supoclip/pull/464))
+
 - **Improved:** Hardware-accelerated GPU offloading for video encoding and clip rendering with NVIDIA NVENC (GeForce RTX 3050 Laptop GPU and modern NVIDIA GPUs). Video rendering, intermediate window cuts, and editor exports now leverage dedicated NVENC hardware silicon, reducing CPU utilization by up to 80%, lowering system RAM consumption, and accelerating clip export speeds by up to 4x. ([#463](https://github.com/FujiwaraChoki/supoclip/pull/463))
 
 - **New:** Customizable Audio-First streaming mode for long videos (defaulting to 30 minutes, customizable to 15m, 30m, 45m, 60m, Always, or Never via UI Composer Settings and `AUDIO_FIRST_MIN_DURATION_MINUTES`). Downloads only the lightweight audio track first (saving over 95% bandwidth and download time), transcribes and detects viral moments, and only fetches the exact video segments selected for clipping without requiring residential proxies. Includes an animated acoustic equalizer visualizer in the progress header and dynamic "Fetching audio" and "Fetching clip video" step indicators. ([#462](https://github.com/FujiwaraChoki/supoclip/pull/462))

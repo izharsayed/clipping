@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Check, ChevronLeft, ChevronRight, Copy, Download, Flame, Loader2, MessageSquare,
-  Play, RefreshCw, Scissors, Share2, Sparkles, Star, Trash2, TrendingUp,
+  Play, RefreshCw, Scissors, Share2, Sparkles, Star, Tag, Trash2, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClipCover, ScoreRing } from "@/components/app/clip-cover";
@@ -26,6 +26,7 @@ export interface PostTextData {
   title: string;
   description: string;
   hashtags: string[];
+  youtube_tags?: string[];
   highlight_words: string[];
   formatted_copy?: string;
 }
@@ -35,9 +36,11 @@ export function formatPostTextClipboard(data: Partial<PostTextData>, fallbackTit
   const title = (data.title || fallbackTitle).trim();
   const desc = (data.description || "").trim();
   const tags = (data.hashtags || []).map((t) => `#${t.replace(/^#/, "")}`).join(" ");
+  const ytTags = (data.youtube_tags || []).join(", ");
   const parts = [title];
   if (desc) parts.push(desc);
   if (tags) parts.push(tags);
+  if (ytTags) parts.push(`Tags:\n${ytTags}`);
   return parts.join("\n\n");
 }
 
@@ -233,6 +236,7 @@ export function PostTextSection({
     return clip.post_text || (clip.workflow_meta?.post_text as PostTextData | null) || null;
   });
   const [isCopying, setIsCopying] = useState(false);
+  const [isCopyingTags, setIsCopyingTags] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
@@ -277,7 +281,19 @@ export function PostTextSection({
   const title = postText?.title || clip.hook_title || "Viral Clip";
   const description = postText?.description || clip.text?.slice(0, 140) || "";
   const hashtags = postText?.hashtags || [];
+  const youtubeTags = postText?.youtube_tags || [];
   const highlightWords = postText?.highlight_words || [];
+
+  const handleCopyTags = () => {
+    const tagsList = youtubeTags.length > 0
+      ? youtubeTags
+      : hashtags.map((t) => t.replace(/^#/, ""));
+    const textToCopy = tagsList.join(", ");
+    navigator.clipboard.writeText(textToCopy);
+    setIsCopyingTags(true);
+    toast.success("YouTube tags copied to clipboard!");
+    setTimeout(() => setIsCopyingTags(false), 2000);
+  };
 
   return (
     <section className="space-y-3 rounded-xl border bg-card p-4 text-card-foreground shadow-xs">
@@ -351,6 +367,39 @@ export function PostTextSection({
                   className="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
                 >
                   #{tag.replace(/^#/, "")}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* YouTube Tags */}
+        {(youtubeTags.length > 0 || hashtags.length > 0) && (
+          <div className="rounded-lg border bg-muted/40 p-2.5">
+            <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Tag className="size-3 text-red-500" />
+                <span>YOUTUBE TAGS</span>
+                <span className="text-[10px] text-muted-foreground/70">
+                  ({(youtubeTags.length > 0 ? youtubeTags : hashtags).length} tags)
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyTags}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline cursor-pointer"
+              >
+                {isCopyingTags ? <Check className="size-3" /> : <Copy className="size-3" />}
+                {isCopyingTags ? "Copied" : "Copy tags"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(youtubeTags.length > 0 ? youtubeTags : hashtags).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-md border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300"
+                >
+                  {tag.replace(/^#/, "")}
                 </span>
               ))}
             </div>
@@ -658,15 +707,15 @@ export function ProcessingPanel({ status, progress, message, phaseSince, sourceS
     if (isAudioDownloading) {
       return t.has("eta.downloadingAudio") ? t("eta.downloadingAudio") : "Downloading audio track…";
     }
-    if (isSegmentsDownloading) {
-      return t.has("eta.downloadingSegments") ? t("eta.downloadingSegments") : "Downloading selected video segments…";
-    }
     if (remainingSeconds === undefined) {
       if (!message) return t("eta.estimating");
       if (/^downloading\b/i.test(message) && isDownloadOverdue(etaInput)) return t("eta.stillDownloading");
       if (workflow === "series" && !upload && phase !== "render") {
         return t("eta.minuteRange", seriesEtaRange(remaining));
       }
+    }
+    if (isSegmentsDownloading) {
+      return t.has("eta.downloadingSegments") ? t("eta.downloadingSegments") : "Downloading selected video segments…";
     }
     return remaining < 50 ? t("eta.underMinute")
       : t("eta.minutes", { count: Math.max(1, Math.round(remaining / 60)) });

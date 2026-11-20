@@ -71,6 +71,7 @@ export interface PostTextData {
   description: string;
   hashtags: string[];
   highlight_words: string[];
+  youtube_tags?: string[];
   formatted_copy?: string;
 }
 

@@ -227,6 +227,10 @@ class PostText(BaseModel):
         default_factory=list,
         description="5 to 8 targeted tags without the # sign and without punctuation.",
     )
+    youtube_tags: List[str] = Field(
+        default_factory=list,
+        description="10 to 15 targeted search tags / keywords for YouTube Studio SEO.",
+    )
     highlight_words: List[str] = Field(
         default_factory=list,
         description="3 to 6 single words spoken in the clip that carry the punch.",
