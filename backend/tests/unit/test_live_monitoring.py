@@ -219,3 +219,53 @@ async def test_monitoring_service_transitions():
         assert active_session.status == "ended"
         assert active_session.ended_at is not None
         assert mock_db.commit.called
+
+
+@pytest.mark.asyncio
+async def test_channel_pause_and_unpause():
+    mock_db = AsyncMock()
+    service = LiveChannelService(mock_db)
+
+    channel = MonitoredChannel(
+        id="ch-pause",
+        user_id="u-1",
+        platform="twitch",
+        channel_identifier="tarik",
+        display_name="tarik",
+        status="live",
+        is_active=True,
+    )
+
+    active_session = LiveStreamSession(
+        id="sess-pause",
+        channel_id="ch-pause",
+        status="active",
+    )
+
+    mock_query_channel = MagicMock()
+    mock_query_channel.scalar_one_or_none.return_value = channel
+
+    mock_query_sessions = MagicMock()
+    mock_query_sessions.scalars.return_value.all.return_value = [active_session]
+
+    mock_db.execute.side_effect = [mock_query_channel, mock_query_sessions]
+
+    with patch("src.services.live.capture.capture_manager.LiveCaptureManager.get_instance") as mock_cap, \
+         patch("redis.asyncio.Redis") as mock_redis_cls:
+        mock_cap_instance = MagicMock()
+        mock_cap_instance.stop_capture = AsyncMock()
+        mock_cap.return_value = mock_cap_instance
+
+        mock_redis = AsyncMock()
+        mock_redis_cls.return_value = mock_redis
+
+        # Pause channel
+        patch_req = ChannelUpdateRequest(is_active=False)
+        updated = await service.update_channel("ch-pause", "u-1", patch_req)
+
+        assert updated.is_active is False
+        assert updated.status == "offline"
+        assert active_session.status == "ended"
+        assert active_session.ended_at is not None
+        assert mock_cap_instance.stop_capture.called
+        assert mock_redis.set.called

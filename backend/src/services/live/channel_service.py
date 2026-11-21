@@ -214,6 +214,7 @@ class LiveChannelService:
         if not ch:
             return None
 
+        was_active = ch.is_active
         if patch.display_name is not None:
             ch.display_name = patch.display_name
         if patch.is_active is not None:
@@ -232,6 +233,62 @@ class LiveChannelService:
         ch.updated_at = datetime.utcnow()
         await self.db.commit()
         await self.db.refresh(ch)
+
+        # Handle active/paused transitions
+        if patch.is_active is not None and patch.is_active != was_active:
+            if not patch.is_active:
+                # Channel was PAUSED:
+                # 1. Close any active sessions in DB
+                sess_stmt = select(LiveStreamSession).where(
+                    LiveStreamSession.channel_id == ch.id,
+                    LiveStreamSession.status == "active",
+                )
+                sessions = (await self.db.execute(sess_stmt)).scalars().all()
+                now = datetime.utcnow()
+                for s in sessions:
+                    s.status = "ended"
+                    s.ended_at = now
+                ch.status = "offline"
+                await self.db.commit()
+
+                # 2. Stop capture in local process if running
+                try:
+                    from .capture.capture_manager import LiveCaptureManager
+                    await LiveCaptureManager.get_instance().stop_capture(ch.id, cleanup_disk=True)
+                except Exception as e:
+                    logger.warning("Error stopping local capture for %s: %s", ch.id, e)
+
+                # 3. Notify worker via Redis flag
+                try:
+                    from ...config import get_config
+                    import redis.asyncio as aioredis
+                    cfg = get_config()
+                    r = aioredis.Redis(host=cfg.redis_host, port=cfg.redis_port, password=cfg.redis_password)
+                    await r.set(f"live_stop:{ch.id}", "1", ex=86400)
+                    await r.aclose()
+                except Exception as e:
+                    logger.warning("Could not set live_stop in Redis: %s", e)
+            else:
+                # Channel was ACTIVATED (Unpaused):
+                # 1. Clear Redis stop flag
+                try:
+                    from ...config import get_config
+                    import redis.asyncio as aioredis
+                    cfg = get_config()
+                    r = aioredis.Redis(host=cfg.redis_host, port=cfg.redis_port, password=cfg.redis_password)
+                    await r.delete(f"live_stop:{ch.id}")
+                    await r.aclose()
+                except Exception as e:
+                    logger.warning("Could not clear live_stop in Redis: %s", e)
+
+                # 2. Trigger immediate status check
+                try:
+                    from .monitoring_service import LiveMonitoringService
+                    monitor = LiveMonitoringService(self.db)
+                    await monitor.check_and_update_channel(ch)
+                except Exception as e:
+                    logger.warning("Could not trigger immediate status check for %s: %s", ch.id, e)
+
         return ch
 
     async def delete_channel(self, channel_id: str, user_id: str) -> bool:
@@ -241,6 +298,37 @@ class LiveChannelService:
         ch = (await self.db.execute(stmt)).scalar_one_or_none()
         if not ch:
             return False
+
+        # Close active sessions and stop capture
+        try:
+            sess_stmt = select(LiveStreamSession).where(
+                LiveStreamSession.channel_id == channel_id,
+                LiveStreamSession.status == "active",
+            )
+            sessions = (await self.db.execute(sess_stmt)).scalars().all()
+            now = datetime.utcnow()
+            for s in sessions:
+                s.status = "ended"
+                s.ended_at = now
+            await self.db.commit()
+        except Exception:
+            pass
+
+        try:
+            from .capture.capture_manager import LiveCaptureManager
+            await LiveCaptureManager.get_instance().stop_capture(channel_id, cleanup_disk=True)
+        except Exception:
+            pass
+
+        try:
+            from ...config import get_config
+            import redis.asyncio as aioredis
+            cfg = get_config()
+            r = aioredis.Redis(host=cfg.redis_host, port=cfg.redis_port, password=cfg.redis_password)
+            await r.set(f"live_stop:{channel_id}", "1", ex=86400)
+            await r.aclose()
+        except Exception:
+            pass
 
         await self.db.delete(ch)
         await self.db.commit()

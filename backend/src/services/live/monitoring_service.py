@@ -28,6 +28,24 @@ class LiveMonitoringService:
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
         """Scan active monitored channels whose last check is older than the interval."""
+        # Stop captures for any channels that have been paused or deleted
+        try:
+            from .capture.capture_manager import LiveCaptureManager
+            capture_mgr = LiveCaptureManager.get_instance()
+            active_capture_ids = list(capture_mgr._captures.keys())
+            if active_capture_ids:
+                stmt_active = select(MonitoredChannel.id).where(
+                    MonitoredChannel.id.in_(active_capture_ids),
+                    MonitoredChannel.is_active == True,
+                )
+                still_active_ids = set((await self.db.execute(stmt_active)).scalars().all())
+                for cid in active_capture_ids:
+                    if cid not in still_active_ids:
+                        logger.info("Stopping capture for inactive/paused channel %s", cid)
+                        await capture_mgr.stop_capture(cid, cleanup_disk=True)
+        except Exception as err:
+            logger.warning("Error checking active captures in poll_active_channels: %s", err)
+
         cutoff = datetime.utcnow() - timedelta(seconds=DEFAULT_POLL_INTERVAL_SECONDS)
         stmt = (
             select(MonitoredChannel)
@@ -89,7 +107,7 @@ class LiveMonitoringService:
 
         action_taken = "none"
 
-        if live_result.is_live:
+        if live_result.is_live and channel.is_active is not False:
             channel.status = "live"
             channel.last_live_at = now
 

@@ -54,6 +54,7 @@ class LiveStreamCaptureEngine:
         self._running: bool = False
         self._watcher_task: Optional[asyncio.Task] = None
         self._registered_files: set = set()
+        self._redis: Optional[Any] = None
 
     async def resolve_playback_url(self) -> Optional[str]:
         """Resolve live HLS playback URL using streamlink with yt-dlp fallback."""
@@ -101,6 +102,26 @@ class LiveStreamCaptureEngine:
         """Start capturing the stream into the rolling buffer."""
         if self._running:
             return True
+
+        # Connect Redis and check if stop flag is present
+        try:
+            from ....config import get_config
+            import redis.asyncio as aioredis
+            cfg = get_config()
+            self._redis = aioredis.Redis(
+                host=cfg.redis_host,
+                port=cfg.redis_port,
+                password=cfg.redis_password,
+                decode_responses=True,
+            )
+            if await self._redis.get(f"live_stop:{self.channel_id}"):
+                logger.info("Channel %s has live_stop flag set; not starting capture", self.channel_id)
+                await self._redis.aclose()
+                self._redis = None
+                return False
+        except Exception as e:
+            logger.warning("Could not check Redis live_stop flag in capture start: %s", e)
+            self._redis = None
 
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
         playback_url = await self.resolve_playback_url()
@@ -156,6 +177,16 @@ class LiveStreamCaptureEngine:
         """Continuously monitors buffer_dir for newly generated segments."""
         while self._running:
             try:
+                # Check for stop signal via Redis
+                if self._redis:
+                    try:
+                        stop_flag = await self._redis.get(f"live_stop:{self.channel_id}")
+                        if stop_flag:
+                            logger.info("Live stop flag detected for channel %s. Stopping capture.", self.channel_id)
+                            break
+                    except Exception as redis_err:
+                        logger.warning("Error checking live_stop in Redis: %s", redis_err)
+
                 files = sorted(self.buffer_dir.glob("seg_*.ts"))
                 # Only register segments once there is at least one newer segment being written
                 # to ensure the previous file is completely flushed by FFmpeg.
@@ -218,6 +249,13 @@ class LiveStreamCaptureEngine:
                 await self.orchestrator.stop()
             except Exception:
                 pass
+
+        if self._redis:
+            try:
+                await self._redis.aclose()
+            except Exception:
+                pass
+            self._redis = None
 
         logger.info("Stream capture stopped for channel %s", self.channel_id)
 
