@@ -41,7 +41,7 @@ services:
       - ./CHANGELOG.md:/app/CHANGELOG.md:ro
       - ./LICENSE:/app/LICENSE:ro
     environment:
-      - NODE_OPTIONS=--max-old-space-size=4096
+      - NODE_OPTIONS=--max-old-space-size=1536
       - NODE_ENV=${NODE_ENV:-development}
       - NEXT_TELEMETRY_DISABLED=1
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
