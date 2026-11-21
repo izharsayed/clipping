@@ -223,18 +223,38 @@ export default function LiveDashboardPage() {
   };
 
   const handleToggleChannelActive = async (channel: MonitoredChannel) => {
+    const nextActive = !channel.is_active;
+
+    // Optimistically update channel active state and status
+    setChannels((prev) =>
+      prev.map((c) =>
+        c.id === channel.id
+          ? {
+              ...c,
+              is_active: nextActive,
+              status: nextActive ? c.status : "offline",
+              active_session: nextActive ? c.active_session : null,
+            }
+          : c
+      )
+    );
+
     try {
       const res = await fetch(`/api/live/channels/${channel.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: !channel.is_active }),
+        body: JSON.stringify({ is_active: nextActive }),
       });
       if (res.ok) {
-        toast.success(channel.is_active ? "Channel paused" : "Channel monitoring active");
+        toast.success(nextActive ? "Channel monitoring active" : "Channel paused");
+        await fetchDashboardData();
+      } else {
+        toast.error("Failed to update status");
         await fetchDashboardData();
       }
     } catch {
-      toast.error("Failed to update status");
+      toast.error("Network error updating status");
+      await fetchDashboardData();
     }
   };
 
@@ -854,10 +874,15 @@ export default function LiveDashboardPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {channels.map((ch) => {
-                  const isLive = ch.status === "live";
+                  const isLive = ch.status === "live" && ch.is_active;
 
                   return (
-                    <Card key={ch.id} className="bg-card border-border overflow-hidden">
+                    <Card
+                      key={ch.id}
+                      className={`bg-card border-border overflow-hidden transition-all ${
+                        !ch.is_active ? "opacity-80 border-dashed" : ""
+                      }`}
+                    >
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-start justify-between gap-3">
                           <Link href={`/live/${ch.id}`} className="flex items-center gap-3 group/link min-w-0">
@@ -886,7 +911,12 @@ export default function LiveDashboardPage() {
                           </Link>
 
                           {/* Status Pill */}
-                          {isLive ? (
+                          {!ch.is_active ? (
+                            <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-400 gap-1.5 text-xs font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                              PAUSED
+                            </Badge>
+                          ) : isLive ? (
                             <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 gap-1.5 animate-pulse text-xs">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                               LIVE
@@ -949,7 +979,7 @@ export default function LiveDashboardPage() {
                               checked={ch.is_active}
                               onCheckedChange={() => handleToggleChannelActive(ch)}
                             />
-                            <span className="text-xs text-muted-foreground">
+                            <span className={`text-xs font-medium ${ch.is_active ? "text-foreground" : "text-amber-500"}`}>
                               {ch.is_active ? "Active" : "Paused"}
                             </span>
                           </div>

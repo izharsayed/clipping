@@ -724,7 +724,12 @@ export default function StreamerPreviewPage() {
                   <Badge variant="outline" className="text-[10px] uppercase font-mono px-1.5 py-0">
                     {channel.platform}
                   </Badge>
-                  {isLive ? (
+                  {channel.is_active === false ? (
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-400 text-[11px] gap-1.5 px-2 py-0.5 font-medium">
+                      <span className="size-1.5 rounded-full bg-amber-400" />
+                      MONITORING PAUSED
+                    </Badge>
+                  ) : isLive ? (
                     <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] gap-1.5 px-2 py-0.5 animate-pulse">
                       <span className="size-1.5 rounded-full bg-emerald-400" />
                       LIVE NOW
